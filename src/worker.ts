@@ -249,3 +249,74 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     recoverySkipped,
   });
 }
+
+export function createPlugin() {
+  return definePlugin({
+  async setup(ctx) {
+    ctx.logger.info("Decision Router worker starting", { version: PLUGIN_VERSION });
+
+    ctx.jobs.register(JOB_KEYS.sweepDecisions, async () => {
+      for (const company of await ctx.companies.list({})) {
+        try {
+          await runSweep(ctx, company.id);
+        } catch (error) {
+          ctx.logger.error("Decision sweep failed", {
+            companyId: company.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    });
+
+    // Event nudges: record a hint for the next scheduled sweep. The sweep
+    // itself stays on the 5-minute schedule so bursts of events never fan out
+    // into bursts of company-wide scans.
+    for (const event of [
+      "issue.created",
+      "issue.updated",
+      "issue.comment.created",
+      "issue.relations.updated",
+      "approval.created",
+      "agent.run.failed",
+    ] as const) {
+      ctx.events.on(event, async (evt) => {
+        await ctx.state.set(
+          { scopeKind: "company", scopeId: evt.companyId, stateKey: "sweep-hint" },
+          { at: new Date().toISOString(), what: evt.eventType },
+        );
+      });
+    }
+
+    // Read-only Gatus surface: returns the last sweep's SLA snapshot
+    // ({ at, scannedIssues, items/Total, routedAuto/Ceo, shadow, byKind[] })
+    // where each byKind entry is { kind, count, medianAgeHours, maxAgeHours }.
+    // No SDK reads, no mutations — a plain `state.get`.
+    ctx.data.register(DATA_KEYS.slaMetrics, async (params) => {
+      const companyId = typeof params.companyId === "string" ? params.companyId : undefined;
+      if (!companyId) return { error: "companyId param required" };
+      const record = await ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep });
+      if (!record) return { error: "no sweep yet" };
+      return record;
+    });
+
+    ctx.logger.info("Decision Router worker ready", { version: PLUGIN_VERSION });
+  },
+
+  async onHealth() {
+    return { status: "ok", message: `Decision Router ${PLUGIN_VERSION}` };
+  },
+
+  async onValidateConfig(raw: Record<string, unknown>) {
+    const config = resolveConfig(raw);
+    const warnings: string[] = [];
+    if (!config.ceoDeskIssueId) warnings.push("ceoDeskIssueId is unset — digests record to plugin state only");
+    if (!config.codeReviewerAgentId) warnings.push("codeReviewerAgentId is unset — review routes name no owner");
+    if (config.applyMutations) warnings.push("applyMutations is true — sweeps MUTATE (cutover mode)");
+    return { ok: true, warnings };
+  },
+  });
+}
+
+const plugin = createPlugin();
+export default plugin;
+runWorker(plugin, import.meta.url);
