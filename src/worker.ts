@@ -185,6 +185,14 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     });
   }
 
+  // Review choose-path verb: propose-only record. Live route/park fires only
+  // in the cutover slice once SDK assign + relations-write capabilities exist
+  // (gaps G-03/G-04); the manifest deliberately requests none of them here,
+  // so no live call can fire on this path. No mutation happens here.
+  const reviewRouted = result.reviewPlans.filter((plan) => plan.decision === "route").length;
+  const reviewParked = result.reviewPlans.filter((plan) => plan.decision === "park").length;
+  const reviewSkipped = result.reviewPlans.length - reviewRouted - reviewParked;
+
   const routedAuto = result.routed.filter((r) => r.destination.type !== "ceo-digest").length;
   const snapshot = slaSnapshot(result.items, now, result.scannedIssues, routedAuto, result.routed.length - routedAuto);
   const recoveryProposed = result.recoveryPlans.filter((plan) => plan.decision === "resolve").length;
@@ -211,6 +219,13 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       retriedKeys: retriedKeys.slice(-RETRY_KEYS_CAP),
       retryFired: retryOutcomes.filter((outcome) => outcome.applied).length,
       retryFailed: retryOutcomes.filter((outcome) => !outcome.applied && outcome.error).length,
+      reviewPlans: result.reviewPlans.length,
+      reviewRouted,
+      reviewParked,
+      reviewSkipped,
+      // Propose-only record: live route/park fires only in the cutover slice
+      // once SDK assign/relations-write capabilities exist (gaps G-03/G-04).
+      reviewModes: result.reviewPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
       recoveryPlans: result.recoveryPlans.length,
       recoveryProposed,
       recoverySkipped,
@@ -225,79 +240,12 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     scannedIssues: result.scannedIssues,
     items: result.items.length,
     retryPlans: result.retryPlans.length,
+    reviewPlans: result.reviewPlans.length,
+    reviewRouted,
+    reviewParked,
+    reviewSkipped,
     shadow: !config.applyMutations,
     recoveryProposed,
     recoverySkipped,
   });
 }
-
-export function createPlugin() {
-  return definePlugin({
-  async setup(ctx) {
-    ctx.logger.info("Decision Router worker starting", { version: PLUGIN_VERSION });
-
-    ctx.jobs.register(JOB_KEYS.sweepDecisions, async () => {
-      for (const company of await ctx.companies.list({})) {
-        try {
-          await runSweep(ctx, company.id);
-        } catch (error) {
-          ctx.logger.error("Decision sweep failed", {
-            companyId: company.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    });
-
-    // Event nudges: record a hint for the next scheduled sweep. The sweep
-    // itself stays on the 5-minute schedule so bursts of events never fan out
-    // into bursts of company-wide scans.
-    for (const event of [
-      "issue.created",
-      "issue.updated",
-      "issue.comment.created",
-      "issue.relations.updated",
-      "approval.created",
-      "agent.run.failed",
-    ] as const) {
-      ctx.events.on(event, async (evt) => {
-        await ctx.state.set(
-          { scopeKind: "company", scopeId: evt.companyId, stateKey: "sweep-hint" },
-          { at: new Date().toISOString(), what: evt.eventType },
-        );
-      });
-    }
-
-    // Read-only Gatus surface: returns the last sweep's SLA snapshot
-    // ({ at, scannedIssues, items/Total, routedAuto/Ceo, shadow, byKind[] })
-    // where each byKind entry is { kind, count, medianAgeHours, maxAgeHours }.
-    // No SDK reads, no mutations — a plain `state.get`.
-    ctx.data.register(DATA_KEYS.slaMetrics, async (params) => {
-      const companyId = typeof params.companyId === "string" ? params.companyId : undefined;
-      if (!companyId) return { error: "companyId param required" };
-      const record = await ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep });
-      if (!record) return { error: "no sweep yet" };
-      return record;
-    });
-
-    ctx.logger.info("Decision Router worker ready", { version: PLUGIN_VERSION });
-  },
-
-  async onHealth() {
-    return { status: "ok", message: `Decision Router ${PLUGIN_VERSION}` };
-  },
-
-  async onValidateConfig(raw: Record<string, unknown>) {
-    const config = resolveConfig(raw);
-    const warnings: string[] = [];
-    if (!config.ceoDeskIssueId) warnings.push("ceoDeskIssueId is unset — digests record to plugin state only");
-    if (!config.codeReviewerAgentId) warnings.push("codeReviewerAgentId is unset — review routes name no owner");
-    if (config.applyMutations) warnings.push("applyMutations is true — sweeps MUTATE (cutover mode)");
-    return { ok: true, warnings };
-  },
-  });
-}
-
-const plugin = createPlugin();
-export default plugin;
-runWorker(plugin, import.meta.url);
