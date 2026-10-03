@@ -19,7 +19,8 @@ import type { IssueThreadInteraction } from "@paperclipai/shared";
 import { CEO_DIGEST_DOCUMENT_KEY, DATA_KEYS, JOB_KEYS, PLUGIN_VERSION, STATE_KEYS } from "./constants.js";
 import { resolveConfig } from "./config.js";
 import { slaSnapshot } from "./metrics.js";
-import { sweepDecisions, type SweepReads } from "./sweep.js";
+import { applyRetryPlans, RETRY_KEYS_CAP, type RetryFirePlan } from "./retry.js";
+import { sweepDecisions, type SweepPrior, type SweepReads } from "./sweep.js";
 
 function isoDate(value: Date | string | null | undefined, fallback: string): string {
   if (value instanceof Date) return value.toISOString();
@@ -119,10 +120,54 @@ function readsFor(ctx: PluginContext): SweepReads {
   };
 }
 
+interface PriorRetryMemory {
+  retryAttempts?: Record<string, number>;
+  retriedKeys?: string[];
+}
+
 async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
   const config = resolveConfig(await ctx.config.get(companyId));
   const now = new Date();
-  const result = await sweepDecisions(companyId, config, readsFor(ctx), now);
+  const priorRecord = (await ctx.state.get({
+    scopeKind: "company",
+    scopeId: companyId,
+    stateKey: STATE_KEYS.lastSweep,
+  })) as PriorRetryMemory | undefined;
+  const prior: SweepPrior = {
+    retryAttempts: priorRecord?.retryAttempts ?? {},
+    retriedKeys: priorRecord?.retriedKeys ?? [],
+  };
+  const result = await sweepDecisions(companyId, config, readsFor(ctx), now, prior);
+
+  // Failed-run retry verb: fire only behind `applyMutations`. In shadow mode
+  // every plan comes back unapplied (proposals live in the digest + state).
+  // Note the manifest still lacks `issues.wakeup` (gap G-05): that capability
+  // lands at the cutover slice, so the host denies any premature fire too.
+  const fireRetry = async (plan: RetryFirePlan): Promise<void> => {
+    await ctx.issues.requestWakeup(plan.issueId, companyId, {
+      reason: `Decision Router retry: ${plan.reason}`,
+      idempotencyKey: plan.idempotencyKey,
+    });
+  };
+  const retryOutcomes = await applyRetryPlans(result.retryPlans, {
+    applyMutations: config.applyMutations,
+    fire: fireRetry,
+  });
+  const retryAttempts: Record<string, number> = { ...(prior.retryAttempts ?? {}) };
+  const retriedKeys: string[] = [...(prior.retriedKeys ?? [])];
+  for (const outcome of retryOutcomes) {
+    if (outcome.plan.action !== "fire") continue;
+    if (!outcome.applied) {
+      ctx.logger.error("Decision retry failed", {
+        companyId,
+        runKey: outcome.plan.runKey,
+        error: outcome.error ?? "unknown error",
+      });
+      continue;
+    }
+    retryAttempts[outcome.plan.runKey] = outcome.plan.attempt;
+    retriedKeys.push(outcome.plan.idempotencyKey);
+  }
 
   for (const point of result.metrics) {
     await ctx.metrics.write(point.name, point.value, { ...point.tags, companyId });
@@ -158,6 +203,12 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       routedAuto: snapshot.routedAuto,
       routedCeo: snapshot.routedCeo,
       byKind: snapshot.byKind,
+      // Retry memory for the next sweep: attempts fired per runKey plus the
+      // idempotency keys already fired (capped; crash-window dedup).
+      retryAttempts,
+      retriedKeys: retriedKeys.slice(-RETRY_KEYS_CAP),
+      retryFired: retryOutcomes.filter((outcome) => outcome.applied).length,
+      retryFailed: retryOutcomes.filter((outcome) => !outcome.applied && outcome.error).length,
     },
   );
 
@@ -165,6 +216,7 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     companyId,
     scannedIssues: result.scannedIssues,
     items: result.items.length,
+    retryPlans: result.retryPlans.length,
     shadow: !config.applyMutations,
   });
 }

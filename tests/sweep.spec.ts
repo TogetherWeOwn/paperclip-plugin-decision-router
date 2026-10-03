@@ -105,4 +105,54 @@ describe("sweepDecisions", () => {
     const result = await sweepDecisions("company-1", { ...DEFAULT_CONFIG, applyMutations: true }, reads(), NOW);
     expect(result.digest).toContain("Live mode");
   });
+
+  it("proposes (never fires) the failed-run retry in shadow mode", async () => {
+    const result = await sweepDecisions("company-1", DEFAULT_CONFIG, reads(), NOW);
+    expect(result.retryPlans).toHaveLength(1);
+    expect(result.retryPlans[0]).toMatchObject({
+      action: "propose",
+      runKey: "failed-run:run-1",
+      attempt: 1,
+      maxAttempts: DEFAULT_CONFIG.maxRetryAttempts,
+    });
+  });
+
+  it("fires the retry plan when mutations are enabled and backoff elapsed", async () => {
+    const result = await sweepDecisions(
+      "company-1",
+      { ...DEFAULT_CONFIG, applyMutations: true },
+      reads(),
+      NOW,
+    );
+    expect(result.retryPlans).toHaveLength(1);
+    expect(result.retryPlans[0]).toMatchObject({
+      action: "fire",
+      idempotencyKey: "decision-router/retry/run-1/attempt-1",
+    });
+  });
+
+  it("threads prior attempts so the next sweep retries at attempt 2", async () => {
+    const result = await sweepDecisions("company-1", DEFAULT_CONFIG, reads(), NOW, {
+      retryAttempts: { "failed-run:run-1": 1 },
+    });
+    const destination = result.routed.find((r) => r.item.kind === "failed_run")?.destination;
+    expect(destination).toMatchObject({ type: "retry", attempt: 2 });
+    expect(result.retryPlans[0]).toMatchObject({ action: "propose", attempt: 2 });
+  });
+
+  it("digests exhausted runs and emits no plan for them", async () => {
+    const result = await sweepDecisions("company-1", DEFAULT_CONFIG, reads(), NOW, {
+      retryAttempts: { "failed-run:run-1": 2 },
+    });
+    expect(result.routed.find((r) => r.item.kind === "failed_run")?.destination.type).toBe("ceo-digest");
+    expect(result.retryPlans).toHaveLength(0);
+  });
+
+  it("skips an already-fired retry instead of planning it again", async () => {
+    const result = await sweepDecisions("company-1", { ...DEFAULT_CONFIG, applyMutations: true }, reads(), NOW, {
+      retriedKeys: ["decision-router/retry/run-1/attempt-1"],
+    });
+    expect(result.retryPlans).toHaveLength(1);
+    expect(result.retryPlans[0]?.action).toBe("skip");
+  });
 });

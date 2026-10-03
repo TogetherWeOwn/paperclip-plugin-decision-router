@@ -11,7 +11,7 @@ TOG-13346 ledger. Don't fork. Machine-readable list: `src/gaps.ts`
 | G-02 | recovery actions list/resolve | read via relation-edge `activeRecoveryAction` summaries; standalone list/resolve missing |
 | G-03 | blocker diagnostics (attention classification) | raw edges + focus-set membership drive owner-vs-park |
 | G-04 | review state read | reviews route to the Code Reviewer by kind; review-verdict bypass fails closed |
-| G-05 | failed-run retry trigger | retry destinations computed and recorded; no wakeup fired (shadow) |
+| G-05 | failed-run retry trigger | retry plans (fire/propose/defer/skip) with backoff + idempotent keys; handler fires only behind applyMutations, capability still absent |
 | G-06 | Decisions-page feed itself (board-only) | per-issue sweep rebuilds the feed without the board ranking |
 
 ## Ledger
