@@ -25,6 +25,12 @@
 import type { AttentionItem } from "./attention.js";
 import { planApprovalActions, type ApprovalPlan } from "./approval.js";
 import type { DecisionRouterConfig } from "./config.js";
+import {
+  decisionLogMetrics,
+  planDecisionLogActions,
+  type DecisionLogInput,
+  type DecisionLogPlan,
+} from "./decisionLog.js";
 import { renderDigest } from "./digest.js";
 import { slaMetrics, sweepCounters, type MetricPoint } from "./metrics.js";
 import { planRecoveryActions, type RecoveryPlan } from "./recovery.js";
@@ -138,6 +144,13 @@ export interface SweepResult {
    * cutover).
    */
   respondPlans: RespondPlan[];
+  /**
+   * decision-log emit plans (pure planning — the sweep never mutates and
+   * never responds). One plan per routed item; `emit` behind the dedicated
+   * `decisionLogEmit` flag (default off), otherwise `skip`. Emits surface as
+   * `decision_router.decision_log.emitted` metric points only.
+   */
+  decisionLogPlans: DecisionLogPlan[];
   metrics: MetricPoint[];
   digest: string;
   scannedIssues: number;
@@ -332,10 +345,27 @@ export async function sweepDecisions(
     }));
   const reviewPlans = planReviewActions(reviewInputs, { applyMutations: config.applyMutations });
   const auto = routed.filter((r) => r.destination.type !== "ceo-digest").length;
-  const metrics = [...slaMetrics(items, now), ...sweepCounters(auto, routed.length - auto)];
   const recoveryPlans = planRecoveryActions(recoveryInputs, { applyMutations: config.applyMutations });
   const approvalPlans = planApprovalActions(approvalInputs, { applyMutations: config.applyMutations });
   const respondPlans = planRespondActions(respondInputs, { applyMutations: config.applyMutations });
+  // Decision-log emit inputs come off the routed rows: the routing rule
+  // already decided each item's destination; the planner formats each as a
+  // dry-run record behind the dedicated `decisionLogEmit` flag (default off).
+  // Flag-off leaves every other plan untouched — emits only add metric points.
+  const decisionLogInputs: DecisionLogInput[] = routed.map((r) => ({
+    kind: r.item.kind,
+    issueId: r.item.issueId,
+    identifier: r.item.identifier ?? null,
+    sourceId: r.item.sourceId,
+    destination: r.destination.type,
+    triageVerdict: r.triage ? r.triage.verdict : null,
+  }));
+  const decisionLogPlans = planDecisionLogActions(decisionLogInputs, { enabled: config.decisionLogEmit, now });
+  const metrics = [
+    ...slaMetrics(items, now),
+    ...sweepCounters(auto, routed.length - auto),
+    ...decisionLogMetrics(decisionLogPlans),
+  ];
   return {
     items,
     routed,
@@ -345,6 +375,7 @@ export async function sweepDecisions(
     approvalPlans,
     unblockPlans,
     respondPlans,
+    decisionLogPlans,
     metrics,
     digest: renderDigest(routed, now, !config.applyMutations),
     scannedIssues: issues.length,
