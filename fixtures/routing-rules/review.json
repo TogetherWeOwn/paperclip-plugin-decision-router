@@ -1,0 +1,22 @@
+{
+  "kind": "review",
+  "rule": "R-10",
+  "item": {
+    "kind": "review",
+    "issueId": "issue-1",
+    "identifier": "PR-101",
+    "sourceId": "review-row-1",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "awaiting review path choice"
+  },
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": { "type": "code-reviewer", "reason": "reviews go to the Code Reviewer" },
+  "grammar": null
+}

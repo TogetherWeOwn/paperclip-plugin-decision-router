@@ -1,0 +1,29 @@
+{
+  "kind": "issue_thread_interaction",
+  "rule": "R-50",
+  "item": {
+    "kind": "issue_thread_interaction",
+    "issueId": "issue-1",
+    "identifier": "ITEM-7",
+    "sourceId": "interaction-1",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "ask_user_questions \"confirm rollout plan\""
+  },
+  "triage": {
+    "verdict": "AGENT_RESOLVABLE",
+    "resolversNote": "triage verdict rides the digest line (see src/triage.ts); fixture pins the route, not the verdict"
+  },
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": {
+    "type": "ceo-digest",
+    "reason": "issue_thread_interaction — CEO decision via the digest grammar"
+  },
+  "grammar": "ANSWER interaction-1 accept|reject"
+}

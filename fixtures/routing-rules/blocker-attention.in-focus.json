@@ -1,0 +1,26 @@
+{
+  "kind": "blocker_attention",
+  "rule": "R-20",
+  "item": {
+    "kind": "blocker_attention",
+    "issueId": "issue-1",
+    "identifier": "ITEM-1",
+    "sourceId": "blocked-by:issue-1",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "blocked by issue-9"
+  },
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": {
+    "type": "blocker-owner",
+    "agentId": "agent-owner",
+    "reason": "in-focus blocker — routed to the blocker's owner"
+  },
+  "grammar": null
+}

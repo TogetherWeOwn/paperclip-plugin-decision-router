@@ -1,0 +1,22 @@
+{
+  "kind": "blocker_attention",
+  "rule": "R-20",
+  "item": {
+    "kind": "blocker_attention",
+    "issueId": "issue-unknown",
+    "identifier": "ITEM-3",
+    "sourceId": "blocked-by:issue-unknown",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "blocked by issue-9"
+  },
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": { "type": "ceo-digest", "reason": "in-focus blocker with no known owner" },
+  "grammar": "DECIDE ITEM-3 <option-id>"
+}

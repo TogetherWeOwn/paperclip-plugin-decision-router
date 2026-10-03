@@ -1,0 +1,26 @@
+{
+  "kind": "review",
+  "rule": "R-70",
+  "item": {
+    "kind": "review",
+    "issueId": "issue-1",
+    "identifier": "ITEM-9",
+    "sourceId": "review-row-9",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "owner-reserved: new spend request inside a review"
+  },
+  "contextNote": "isOwnerReserved() === true overrides every kind rule",
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": {
+    "type": "ceo-digest",
+    "reason": "owner-reserved matter — decision brief for the CEO, never an agent"
+  },
+  "grammar": "DECIDE ITEM-9 <option-id>"
+}

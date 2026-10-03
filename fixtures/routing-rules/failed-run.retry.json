@@ -1,0 +1,27 @@
+{
+  "kind": "failed_run",
+  "rule": "R-40",
+  "item": {
+    "kind": "failed_run",
+    "issueId": "issue-1",
+    "identifier": "ITEM-5",
+    "sourceId": "run-1",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "failed run run-1: heartbeat timeout"
+  },
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": {
+    "type": "retry",
+    "attempt": 1,
+    "maxAttempts": 2,
+    "reason": "failed run — bounded retry policy"
+  },
+  "grammar": "RETRY run-1"
+}

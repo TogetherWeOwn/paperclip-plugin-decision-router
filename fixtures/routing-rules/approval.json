@@ -1,0 +1,22 @@
+{
+  "kind": "approval",
+  "rule": "R-60",
+  "item": {
+    "kind": "approval",
+    "issueId": "issue-1",
+    "identifier": "ITEM-8",
+    "sourceId": "approval-1",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "pending approval approval-1 (spend)"
+  },
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": { "type": "ceo-digest", "reason": "approval — CEO decision via the digest grammar" },
+  "grammar": "APPROVE approval-1"
+}

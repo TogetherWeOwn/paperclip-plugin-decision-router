@@ -1,0 +1,26 @@
+{
+  "kind": "recovery_action",
+  "rule": "R-30",
+  "item": {
+    "kind": "recovery_action",
+    "issueId": "issue-1",
+    "identifier": "ITEM-4",
+    "sourceId": "recovery-1",
+    "pendingSince": "2026-10-03T10:00:00.000Z",
+    "detail": "missing_disposition (open)"
+  },
+  "context": {
+    "codeReviewerAgentId": "agent-reviewer",
+    "focusAnchorIssueId": "issue-focus",
+    "blockerOwners": { "issue-1": "agent-owner" },
+    "focusIssueIds": [],
+    "retryAttempts": {},
+    "maxRetryAttempts": 2
+  },
+  "expect": {
+    "type": "reconciler",
+    "outcome": "resolve",
+    "reason": "recovery action — reconciler policy outcome"
+  },
+  "grammar": "RESOLVE recovery-1 resolve|park|escalate"
+}
