@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ageHours, summarizeByKind, type AttentionItem } from "../src/attention.js";
-import { slaMetrics, sweepCounters } from "../src/metrics.js";
+import { slaMetrics, slaSnapshot, sweepCounters } from "../src/metrics.js";
 import { renderDigest } from "../src/digest.js";
 import type { RoutedItem } from "../src/routing.js";
 
@@ -61,6 +61,28 @@ describe("slaMetrics", () => {
 
   it("emits sweep counters that add up", () => {
     expect(sweepCounters(3, 2)).toContainEqual({ name: "decision_router.sweep.items_total", value: 5 });
+  });
+
+  it("builds a Gatus-ready snapshot with all six kinds", () => {
+    const snapshot = slaSnapshot(
+      [item("blocker_attention", "2026-10-03T08:00:00Z"), item("approval", "2026-10-03T09:00:00Z")],
+      NOW,
+      2,
+      1,
+      1,
+    );
+    expect(snapshot).toMatchObject({ scannedIssues: 2, itemsTotal: 2, routedAuto: 1, routedCeo: 1 });
+    expect(snapshot.byKind).toHaveLength(6);
+    expect(snapshot.byKind.find((entry) => entry.kind === "blocker_attention")).toMatchObject({
+      count: 1,
+      medianAgeHours: 10,
+      maxAgeHours: 10,
+    });
+    expect(snapshot.byKind.find((entry) => entry.kind === "review")).toMatchObject({
+      count: 0,
+      medianAgeHours: null,
+      maxAgeHours: null,
+    });
   });
 });
 

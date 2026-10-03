@@ -33,3 +33,22 @@ npm run verify   # typecheck + tests + build
 
 Leave `applyMutations: false` until the cutover slice. Setting it `true`
 makes sweeps mutate (respond/resolve/wakeup/decide) — owner approval required.
+
+## Scrape (Gatus)
+
+Each sweep writes `decision_router.attention.count{kind}`,
+`decision_router.attention.age_median_hours{kind}` and
+`decision_router.attention.age_max_hours{kind}` via `metrics.write`, and stores
+the same snapshot on the `sla-metrics` data endpoint (read-only `state.get`,
+no new capabilities). Gatus scrapes the endpoint per company and alerts on
+`byKind`:
+
+```json
+{ "at": "2026-10-03T18:00:00.000Z", "shadow": true, "byKind": [
+  { "kind": "blocker_attention", "count": 2, "medianAgeHours": 8, "maxAgeHours": 10 }
+]}
+```
+
+All six kinds are always present (zero-counts included); ages are `null` when
+no item has a known age. Before the first sweep the endpoint returns
+`{"error": "no sweep yet"}`.
