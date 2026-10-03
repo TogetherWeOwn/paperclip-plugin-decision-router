@@ -141,6 +141,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
 
   const recoveryProposed = result.recoveryPlans.filter((plan) => plan.decision === "resolve").length;
   const recoverySkipped = result.recoveryPlans.length - recoveryProposed;
+  const approvalProposed = result.approvalPlans.filter((plan) => plan.decision === "approve").length;
+  const approvalSkipped = result.approvalPlans.length - approvalProposed;
 
   await ctx.state.set(
     { scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep },
@@ -157,6 +159,13 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       // Propose-only record: live resolve fires only in the cutover slice once
       // an SDK resolve capability exists (gap G-02). No mutation happens here.
       recoveryModes: result.recoveryPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
+      approvalPlans: result.approvalPlans.length,
+      approvalProposed,
+      approvalSkipped,
+      // Propose-only record: live decide fires only in the cutover slice once
+      // `approvals.respond` enters the manifest with owner approval (TOG-13506).
+      // No mutation happens here.
+      approvalModes: result.approvalPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
     },
   );
 
@@ -167,6 +176,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     shadow: !config.applyMutations,
     recoveryProposed,
     recoverySkipped,
+    approvalProposed,
+    approvalSkipped,
   });
 }
 
