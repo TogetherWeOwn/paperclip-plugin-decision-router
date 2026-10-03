@@ -7,7 +7,7 @@
 import { createTestHarness } from "@paperclipai/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 
-import { CEO_DIGEST_DOCUMENT_KEY, JOB_KEYS, STATE_KEYS } from "../src/constants.js";
+import { CEO_DIGEST_DOCUMENT_KEY, DATA_KEYS, JOB_KEYS, STATE_KEYS } from "../src/constants.js";
 import manifest from "../src/manifest.js";
 import { createPlugin } from "../src/worker.js";
 
@@ -102,6 +102,52 @@ describe("decision-router worker", () => {
     expect(documents.some((doc) => doc.key === CEO_DIGEST_DOCUMENT_KEY)).toBe(true);
 
     // Shadow rule: no mutations issued.
+    expect(harness.activity).toEqual([]);
+  });
+
+  it("serves per-kind count and age on the sla-metrics endpoint for Gatus", async () => {
+    const harness = await setup({ ceoDeskIssueId: DESK_ISSUE, codeReviewerAgentId: "agent-reviewer" });
+
+    // Before any sweep: a stable sentinel, never null.
+    expect(await harness.getData(DATA_KEYS.slaMetrics, { companyId: COMPANY })).toEqual({ error: "no sweep yet" });
+    expect(await harness.getData(DATA_KEYS.slaMetrics, {})).toEqual({ error: "companyId param required" });
+
+    await harness.runJob(JOB_KEYS.sweepDecisions);
+
+    const snapshot = (await harness.getData(DATA_KEYS.slaMetrics, { companyId: COMPANY })) as {
+      at: string;
+      scannedIssues: number;
+      itemsTotal: number;
+      shadow: boolean;
+      byKind: Array<{ kind: string; count: number; medianAgeHours: number | null; maxAgeHours: number | null }>;
+    };
+    expect(new Set(snapshot.byKind.map((entry) => entry.kind))).toEqual(
+      new Set([
+        "blocker_attention",
+        "recovery_action",
+        "review",
+        "issue_thread_interaction",
+        "failed_run",
+        "approval",
+      ]),
+    );
+    const entry = (kind: string) => {
+      const found = snapshot.byKind.find((row) => row.kind === kind);
+      expect(found).toBeDefined();
+      return found as { kind: string; count: number; medianAgeHours: number | null; maxAgeHours: number | null };
+    };
+    expect(entry("issue_thread_interaction").count).toBe(1);
+    expect(entry("approval").count).toBe(1);
+    expect(entry("review").count).toBe(0);
+    expect(entry("review").medianAgeHours).toBeNull();
+    // Single-item kinds carry a real numeric age, not null and not 0-by-default.
+    const interaction = entry("issue_thread_interaction");
+    expect(typeof interaction.medianAgeHours).toBe("number");
+    expect(interaction.medianAgeHours).toBe(interaction.maxAgeHours);
+    expect(snapshot.itemsTotal).toBeGreaterThanOrEqual(2);
+    expect(snapshot.shadow).toBe(true);
+
+    // Shadow rule: serving the endpoint reads state and mutates nothing.
     expect(harness.activity).toEqual([]);
   });
 

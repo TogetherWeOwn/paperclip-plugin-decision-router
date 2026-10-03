@@ -18,6 +18,7 @@ import type { IssueThreadInteraction } from "@paperclipai/shared";
 
 import { CEO_DIGEST_DOCUMENT_KEY, DATA_KEYS, JOB_KEYS, PLUGIN_VERSION, STATE_KEYS } from "./constants.js";
 import { resolveConfig } from "./config.js";
+import { slaSnapshot } from "./metrics.js";
 import { sweepDecisions, type SweepReads } from "./sweep.js";
 
 function isoDate(value: Date | string | null | undefined, fallback: string): string {
@@ -139,6 +140,9 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     });
   }
 
+  const routedAuto = result.routed.filter((r) => r.destination.type !== "ceo-digest").length;
+  const snapshot = slaSnapshot(result.items, now, result.scannedIssues, routedAuto, result.routed.length - routedAuto);
+
   await ctx.state.set(
     { scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep },
     {
@@ -148,6 +152,12 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       digestChars: result.digest.length,
       digestIssueId: config.ceoDeskIssueId,
       shadow: !config.applyMutations,
+      // Per-kind SLA snapshot for the `sla-metrics` data endpoint (Gatus).
+      // Kept beside the legacy fields so existing readers keep working.
+      itemsTotal: snapshot.itemsTotal,
+      routedAuto: snapshot.routedAuto,
+      routedCeo: snapshot.routedCeo,
+      byKind: snapshot.byKind,
     },
   );
 
@@ -196,10 +206,16 @@ export function createPlugin() {
       });
     }
 
+    // Read-only Gatus surface: returns the last sweep's SLA snapshot
+    // ({ at, scannedIssues, items/Total, routedAuto/Ceo, shadow, byKind[] })
+    // where each byKind entry is { kind, count, medianAgeHours, maxAgeHours }.
+    // No SDK reads, no mutations — a plain `state.get`.
     ctx.data.register(DATA_KEYS.slaMetrics, async (params) => {
       const companyId = typeof params.companyId === "string" ? params.companyId : undefined;
       if (!companyId) return { error: "companyId param required" };
-      return ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep });
+      const record = await ctx.state.get({ scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep });
+      if (!record) return { error: "no sweep yet" };
+      return record;
     });
 
     ctx.logger.info("Decision Router worker ready", { version: PLUGIN_VERSION });
