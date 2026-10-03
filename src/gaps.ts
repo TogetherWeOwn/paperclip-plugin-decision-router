@@ -46,7 +46,7 @@ export const HOST_CAPABILITY_GAPS: HostCapabilityGap[] = [
     source: "review state (which issues await a review path choice)",
     needed: "Read review attention: pending review verdicts + reviewInteractionId linkage.",
     sdkToday: "No review-state read capability; listInteractions rows do not carry the named-review linkage (caller-asserted in triage).",
-    slice1Workaround: "Reviews route to the Code Reviewer by kind; review-verdict bypass stays fail-closed (namedReviewInteraction defaults false).",
+    slice1Workaround: "Review choose-path plans (route/park/skip) keyed review-choose-path:<id>; the handler records propose-only behind applyMutations, and the manifest still requests no assign/relations-write capability until the cutover slice. Review-verdict bypass stays fail-closed (namedReviewInteraction defaults false).",
     ledgerRef: "TOG-13346 (upstream-shaped: review-state read for plugins)",
   },
   {

@@ -20,8 +20,21 @@ function ctx(overrides: Partial<RoutingContext> = {}): RoutingContext {
 }
 
 describe("routeAttention", () => {
-  it("sends reviews to the Code Reviewer", () => {
+  it("sends in-focus reviews to the Code Reviewer", () => {
     expect(routeAttention(item("review"), ctx()).type).toBe("code-reviewer");
+  });
+
+  it("parks out-of-focus reviews against the focus anchor", () => {
+    const destination = routeAttention(item("review"), ctx({ focusIssueIds: ["issue-other"] }));
+    expect(destination).toMatchObject({ type: "park", focusAnchorIssueId: "issue-focus" });
+  });
+
+  it("digests out-of-focus reviews when no anchor is configured", () => {
+    const destination = routeAttention(
+      item("review"),
+      ctx({ focusIssueIds: ["issue-other"], focusAnchorIssueId: null }),
+    );
+    expect(destination.type).toBe("ceo-digest");
   });
 
   it("sends in-focus blockers to the blocker's owner", () => {

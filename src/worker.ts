@@ -185,6 +185,14 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     });
   }
 
+  // Review choose-path verb: propose-only record. Live route/park fires only
+  // in the cutover slice once SDK assign + relations-write capabilities exist
+  // (gaps G-03/G-04); the manifest deliberately requests none of them here,
+  // so no live call can fire on this path. No mutation happens here.
+  const reviewRouted = result.reviewPlans.filter((plan) => plan.decision === "route").length;
+  const reviewParked = result.reviewPlans.filter((plan) => plan.decision === "park").length;
+  const reviewSkipped = result.reviewPlans.length - reviewRouted - reviewParked;
+
   const routedAuto = result.routed.filter((r) => r.destination.type !== "ceo-digest").length;
   const snapshot = slaSnapshot(result.items, now, result.scannedIssues, routedAuto, result.routed.length - routedAuto);
   const recoveryProposed = result.recoveryPlans.filter((plan) => plan.decision === "resolve").length;
@@ -211,6 +219,13 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       retriedKeys: retriedKeys.slice(-RETRY_KEYS_CAP),
       retryFired: retryOutcomes.filter((outcome) => outcome.applied).length,
       retryFailed: retryOutcomes.filter((outcome) => !outcome.applied && outcome.error).length,
+      reviewPlans: result.reviewPlans.length,
+      reviewRouted,
+      reviewParked,
+      reviewSkipped,
+      // Propose-only record: live route/park fires only in the cutover slice
+      // once SDK assign/relations-write capabilities exist (gaps G-03/G-04).
+      reviewModes: result.reviewPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
       recoveryPlans: result.recoveryPlans.length,
       recoveryProposed,
       recoverySkipped,
@@ -225,6 +240,10 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     scannedIssues: result.scannedIssues,
     items: result.items.length,
     retryPlans: result.retryPlans.length,
+    reviewPlans: result.reviewPlans.length,
+    reviewRouted,
+    reviewParked,
+    reviewSkipped,
     shadow: !config.applyMutations,
     recoveryProposed,
     recoverySkipped,

@@ -2,7 +2,8 @@
  * Deterministic auto-routing: the first pass of every sweep, before anything
  * reaches the CEO digest. Order matters — the first matching rule wins:
  *
- *   1. reviews → the Code Reviewer (exact-head review path stays intact).
+ *   1. reviews → the Code Reviewer when in focus, parked with an edge to
+ *      the focus anchor when out of focus (exact-head review path intact).
  *   2. blockers → the blocker's owner; parked with an edge to the focus
  *      anchor when the blocked issue is out of focus.
  *   3. recovery actions → the existing reconciler policy outcome.
@@ -66,8 +67,23 @@ export function routeAttention(item: AttentionItem, ctx: RoutingContext): RouteD
     return { type: "ceo-digest", reason: "needs a human capability, not a decision — work order via the CEO desk" };
   }
   switch (item.kind) {
-    case "review":
+    case "review": {
+      // R-10: in-focus reviews route straight to the Code Reviewer so the
+      // exact-head path (reviewer ≠ author, green CI on the head SHA) never
+      // waits on the digest. Out-of-focus reviews park against the focus
+      // anchor, mirroring the blocker rule below.
+      if (!inFocus(item.issueId, ctx)) {
+        if (!ctx.focusAnchorIssueId) {
+          return { type: "ceo-digest", reason: "out-of-focus review with no focus anchor configured" };
+        }
+        return {
+          type: "park",
+          focusAnchorIssueId: ctx.focusAnchorIssueId,
+          reason: "out-of-focus review — parked with an edge to the focus anchor",
+        };
+      }
       return { type: "code-reviewer", reason: "reviews go to the Code Reviewer" };
+    }
     case "blocker_attention": {
       if (!inFocus(item.issueId, ctx)) {
         if (!ctx.focusAnchorIssueId) {
