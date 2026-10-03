@@ -23,6 +23,7 @@
  * `applyMutations`.
  */
 import type { AttentionItem } from "./attention.js";
+import { planApprovalActions, type ApprovalPlan } from "./approval.js";
 import type { DecisionRouterConfig } from "./config.js";
 import { renderDigest } from "./digest.js";
 import { slaMetrics, sweepCounters, type MetricPoint } from "./metrics.js";
@@ -98,6 +99,13 @@ export interface SweepResult {
    * call fires until the cutover slice lands an SDK resolve capability (G-02).
    */
   recoveryPlans: RecoveryPlan[];
+  /**
+   * approval approve plans (pure planning — the sweep never mutates).
+   * `mode` is `propose` unless `applyMutations` is true; even then no live
+   * call fires until the cutover slice lands an SDK decide capability
+   * (`approvals.respond`, absent from the manifest until cutover).
+   */
+  approvalPlans: ApprovalPlan[];
   metrics: MetricPoint[];
   digest: string;
   scannedIssues: number;
@@ -222,6 +230,7 @@ export async function sweepDecisions(
   }
 
   const approvals = await reads.listPendingApprovals(companyId);
+  const approvalInputs: { id: string; issueId: string | null; status: string }[] = [];
   for (const approval of approvals) {
     const item: AttentionItem = {
       kind: "approval",
@@ -234,6 +243,7 @@ export async function sweepDecisions(
     };
     items.push(item);
     routed.push({ item, triage: null, destination: routeAttention(item, routingCtx) });
+    approvalInputs.push({ id: approval.id, issueId: approval.issueId, status: approval.status });
   }
 
   for (const item of await reads.extraItems(companyId)) {
@@ -256,11 +266,13 @@ export async function sweepDecisions(
   const auto = routed.filter((r) => r.destination.type !== "ceo-digest").length;
   const metrics = [...slaMetrics(items, now), ...sweepCounters(auto, routed.length - auto)];
   const recoveryPlans = planRecoveryActions(recoveryInputs, { applyMutations: config.applyMutations });
+  const approvalPlans = planApprovalActions(approvalInputs, { applyMutations: config.applyMutations });
   return {
     items,
     routed,
     retryPlans,
     recoveryPlans,
+    approvalPlans,
     metrics,
     digest: renderDigest(routed, now, !config.applyMutations),
     scannedIssues: issues.length,
