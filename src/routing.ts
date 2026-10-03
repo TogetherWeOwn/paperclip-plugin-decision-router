@@ -15,6 +15,7 @@
  * reserved-matter gate in `interaction_route.sh route`.
  */
 import type { AttentionItem } from "./attention.js";
+import { retryKeyForRun } from "./retry.js";
 import { triageInteraction, type TriageResult } from "./triage.js";
 
 export const RECOVERY_OUTCOMES = ["resolve", "park", "escalate"] as const;
@@ -37,7 +38,7 @@ export interface RoutingContext {
   blockerOwners: Record<string, string>;
   /** Issue ids currently in focus. Empty means "everything is in focus". */
   focusIssueIds: string[];
-  /** Failed-run attempts so far: run id → completed attempts. */
+  /** Failed-run attempts so far: runKey (`failed-run:<runId>`) → completed attempts. */
   retryAttempts: Record<string, number>;
   maxRetryAttempts: number;
   /** When true, the item needs a human capability, not a decision (work order). */
@@ -89,7 +90,9 @@ export function routeAttention(item: AttentionItem, ctx: RoutingContext): RouteD
       // outcomes arrive via the CEO grammar (RESOLVE) once live reads land.
       return { type: "reconciler", outcome: "resolve", reason: "recovery action — reconciler policy outcome" };
     case "failed_run": {
-      const attempt = (ctx.retryAttempts[item.sourceId] ?? 0) + 1;
+      // Keyed by runKey (`failed-run:<runId>`), the same domain the sweep
+      // persists in last-sweep state — so attempts survive across sweeps.
+      const attempt = (ctx.retryAttempts[retryKeyForRun(item.sourceId)] ?? 0) + 1;
       if (attempt > ctx.maxRetryAttempts) {
         return { type: "ceo-digest", reason: `failed run exhausted ${ctx.maxRetryAttempts} retries — needs a decision` };
       }

@@ -26,6 +26,7 @@ import type { AttentionItem } from "./attention.js";
 import type { DecisionRouterConfig } from "./config.js";
 import { renderDigest } from "./digest.js";
 import { slaMetrics, sweepCounters, type MetricPoint } from "./metrics.js";
+import { planRetry, type RetryPlan } from "./retry.js";
 import { routeAttention, routeInteraction, type RoutedItem, type RoutingContext } from "./routing.js";
 import type { TriageRow } from "./triage.js";
 
@@ -88,9 +89,19 @@ export interface SweepReads {
 export interface SweepResult {
   items: AttentionItem[];
   routed: RoutedItem[];
+  /** One plan per `retry` destination: fire/propose/defer/skip. Pure data — the worker applies `fire` plans behind `applyMutations`. */
+  retryPlans: RetryPlan[];
   metrics: MetricPoint[];
   digest: string;
   scannedIssues: number;
+}
+
+/** Prior-sweep retry memory, read from the last-sweep state record. Absent on the first sweep. */
+export interface SweepPrior {
+  /** Attempts already fired per runKey (`failed-run:<runId>`). */
+  retryAttempts?: Record<string, number>;
+  /** Idempotency keys already fired (crash-window dedup). */
+  retriedKeys?: string[];
 }
 
 const OPEN_STATUSES = new Set(["todo", "in_progress", "in_review"]);
@@ -106,6 +117,7 @@ export async function sweepDecisions(
   config: DecisionRouterConfig,
   reads: SweepReads,
   now: Date = new Date(),
+  prior: SweepPrior = {},
 ): Promise<SweepResult> {
   const nowIso = now.toISOString();
   const issues = (await reads.listOpenIssues(companyId, config.sweepPageSize)).filter((issue) =>
@@ -121,9 +133,10 @@ export async function sweepDecisions(
       issues.filter((issue) => issue.assigneeAgentId).map((issue) => [issue.id, issue.assigneeAgentId as string]),
     ),
     focusIssueIds: [],
-    retryAttempts: {},
+    retryAttempts: prior.retryAttempts ?? {},
     maxRetryAttempts: config.maxRetryAttempts,
   };
+  const firedKeys = new Set(prior.retriedKeys ?? []);
 
   for (const issue of issues) {
     const label = issue.identifier ?? issue.id;
@@ -219,7 +232,19 @@ export async function sweepDecisions(
     routed.push({ item, triage: null, destination: routeAttention(item, routingCtx) });
   }
 
+  const retryPlans: RetryPlan[] = routed
+    .filter((r) => r.destination.type === "retry")
+    .map((r) =>
+      planRetry({
+        item: r.item,
+        attempt: r.destination.type === "retry" ? r.destination.attempt : 1,
+        maxAttempts: r.destination.type === "retry" ? r.destination.maxAttempts : config.maxRetryAttempts,
+        firedKeys,
+        applyMutations: config.applyMutations,
+        nowMs: now.getTime(),
+      }),
+    );
   const auto = routed.filter((r) => r.destination.type !== "ceo-digest").length;
   const metrics = [...slaMetrics(items, now), ...sweepCounters(auto, routed.length - auto)];
-  return { items, routed, metrics, digest: renderDigest(routed, now, !config.applyMutations), scannedIssues: issues.length };
+  return { items, routed, retryPlans, metrics, digest: renderDigest(routed, now, !config.applyMutations), scannedIssues: issues.length };
 }

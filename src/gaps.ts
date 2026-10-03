@@ -54,7 +54,7 @@ export const HOST_CAPABILITY_GAPS: HostCapabilityGap[] = [
     source: "failed runs (retry)",
     needed: "List failed heartbeat runs + bounded retry trigger.",
     sdkToday: "issues.orchestration.read exposes run summaries; retry needs issues.wakeup/issues.update, which the manifest deliberately does not yet request.",
-    slice1Workaround: "Retry destinations are computed (attempt n of max) and recorded in shadow mode; no wakeup is fired until the cutover slice.",
+    slice1Workaround: "Retry plans (fire/propose/defer/skip) are computed with backoff and idempotent keys; the handler fires requestWakeup only behind applyMutations, and the manifest still lacks issues.wakeup until the cutover slice.",
     ledgerRef: "TOG-13346 (upstream-shaped: failed-run retry for plugins)",
   },
   {

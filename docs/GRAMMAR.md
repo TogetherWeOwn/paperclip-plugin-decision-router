@@ -20,6 +20,10 @@ APPROVE <approval-id> [note...]
 - `RESOLVE` resolves a recovery action. Outcome is one of the reconciler
   outcomes: `resolve`, `park`, `escalate`.
 - `RETRY` retries a failed run under the bounded retry policy (default max 2).
+  Attempt n waits `15min * 2^(n-1)` (capped at 4h) after the run finished;
+  every fire carries a stable idempotency key
+  (`decision-router/retry/<run-id>/attempt-<n>`) so replays dedup. In shadow
+  mode the verb only proposes — see `src/retry.ts`.
 - `APPROVE` approves a company approval as the paired board user. Requires
   `approvals.respond`.
 

@@ -151,6 +151,36 @@ describe("decision-router worker", () => {
     expect(harness.activity).toEqual([]);
   });
 
+  it("persists empty retry memory in shadow mode and fires nothing", async () => {
+    const harness = await setup({ ceoDeskIssueId: DESK_ISSUE, codeReviewerAgentId: "agent-reviewer" });
+    await harness.runJob(JOB_KEYS.sweepDecisions);
+    const lastSweep = harness.getState({
+      scopeKind: "company",
+      scopeId: COMPANY,
+      stateKey: STATE_KEYS.lastSweep,
+    }) as { retryAttempts: Record<string, number>; retriedKeys: string[]; retryFired: number } | undefined;
+    expect(lastSweep?.retryAttempts).toEqual({});
+    expect(lastSweep?.retriedKeys).toEqual([]);
+    expect(lastSweep?.retryFired).toBe(0);
+    expect(harness.activity).toEqual([]);
+  });
+
+  it("issues no wakeups with the flag on when no failed run is due", async () => {
+    const harness = await setup({
+      ceoDeskIssueId: DESK_ISSUE,
+      codeReviewerAgentId: "agent-reviewer",
+      applyMutations: true,
+    });
+    await harness.runJob(JOB_KEYS.sweepDecisions);
+    const lastSweep = harness.getState({
+      scopeKind: "company",
+      scopeId: COMPANY,
+      stateKey: STATE_KEYS.lastSweep,
+    }) as { shadow: boolean } | undefined;
+    expect(lastSweep?.shadow).toBe(false);
+    expect(harness.activity).toEqual([]);
+  });
+
   it("records the digest to state when no desk card is configured", async () => {
     const harness = await setup({});
     await harness.runJob(JOB_KEYS.sweepDecisions);

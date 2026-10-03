@@ -62,7 +62,7 @@ describe("routeAttention", () => {
   it("digests failed runs past the retry bound", () => {
     const destination = routeAttention(
       item("failed_run", { sourceId: "run-1" }),
-      ctx({ retryAttempts: { "run-1": 2 } }),
+      ctx({ retryAttempts: { "failed-run:run-1": 2 } }),
     );
     expect(destination.type).toBe("ceo-digest");
   });
