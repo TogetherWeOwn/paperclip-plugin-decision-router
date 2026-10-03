@@ -113,7 +113,7 @@ export interface SweepResult {
 
 /** Prior-sweep retry memory, read from the last-sweep state record. Absent on the first sweep. */
 export interface SweepPrior {
-  /** Attempts already fired per runKey (`failed-run:<runId>`) → completed attempts. */
+  /** Attempts already fired per runKey (`failed-run:<runId>`). */
   retryAttempts?: Record<string, number>;
   /** Idempotency keys already fired (crash-window dedup). */
   retriedKeys?: string[];
@@ -169,8 +169,8 @@ export async function sweepDecisions(
         issueId: issue.id,
         identifier: label,
         sourceId: ix.id,
-        pendingSince: iso(ix.createdAt, nowIso),
         detail: `${ix.kind} "${ix.title ?? "(untitled)"}"`,
+        pendingSince: iso(ix.createdAt, nowIso),
       };
       items.push(item);
       const row: TriageRow = {
