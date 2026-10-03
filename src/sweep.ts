@@ -28,6 +28,7 @@ import { renderDigest } from "./digest.js";
 import { slaMetrics, sweepCounters, type MetricPoint } from "./metrics.js";
 import { planRecoveryActions, type RecoveryPlan } from "./recovery.js";
 import { planRetry, type RetryPlan } from "./retry.js";
+import { planReviewActions, type ReviewPlan, type ReviewRouteInput } from "./review.js";
 import { routeAttention, routeInteraction, type RoutedItem, type RoutingContext } from "./routing.js";
 import type { TriageRow } from "./triage.js";
 
@@ -93,6 +94,13 @@ export interface SweepResult {
   /** One plan per `retry` destination: fire/propose/defer/skip. Pure data — the worker applies `fire` plans behind `applyMutations`. */
   retryPlans: RetryPlan[];
   /**
+   * `review` choose-path plans (pure planning — the sweep never mutates).
+   * `mode` is `propose` unless `applyMutations` is true; even then no live
+   * call fires until the cutover slice lands SDK assign/relations-write
+   * capabilities (gaps G-03/G-04).
+   */
+  reviewPlans: ReviewPlan[];
+  /**
    * recovery_action resolve plans (pure planning — the sweep never mutates).
    * `mode` is `propose` unless `applyMutations` is true; even then no live
    * call fires until the cutover slice lands an SDK resolve capability (G-02).
@@ -105,7 +113,7 @@ export interface SweepResult {
 
 /** Prior-sweep retry memory, read from the last-sweep state record. Absent on the first sweep. */
 export interface SweepPrior {
-  /** Attempts already fired per runKey (`failed-run:<runId>`). */
+  /** Attempts already fired per runKey (`failed-run:<runId>`) → completed attempts. */
   retryAttempts?: Record<string, number>;
   /** Idempotency keys already fired (crash-window dedup). */
   retriedKeys?: string[];
@@ -253,6 +261,24 @@ export async function sweepDecisions(
         nowMs: now.getTime(),
       }),
     );
+  // Choose-path inputs come off the routed review destinations: the routing
+  // rule already decided code-reviewer vs park vs digest; the planner turns
+  // each into an executable-or-recorded plan behind `applyMutations`.
+  const reviewInputs: ReviewRouteInput[] = routed
+    .filter((r) => r.item.kind === "review")
+    .map((r) => ({
+      id: r.item.sourceId,
+      issueId: r.item.issueId,
+      destination:
+        r.destination.type === "code-reviewer"
+          ? ("code-reviewer" as const)
+          : r.destination.type === "park"
+            ? ("park" as const)
+            : ("ceo-digest" as const),
+      codeReviewerAgentId: config.codeReviewerAgentId,
+      focusAnchorIssueId: config.focusAnchorIssueId,
+    }));
+  const reviewPlans = planReviewActions(reviewInputs, { applyMutations: config.applyMutations });
   const auto = routed.filter((r) => r.destination.type !== "ceo-digest").length;
   const metrics = [...slaMetrics(items, now), ...sweepCounters(auto, routed.length - auto)];
   const recoveryPlans = planRecoveryActions(recoveryInputs, { applyMutations: config.applyMutations });
@@ -260,6 +286,7 @@ export async function sweepDecisions(
     items,
     routed,
     retryPlans,
+    reviewPlans,
     recoveryPlans,
     metrics,
     digest: renderDigest(routed, now, !config.applyMutations),
