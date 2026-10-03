@@ -187,6 +187,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
 
   const routedAuto = result.routed.filter((r) => r.destination.type !== "ceo-digest").length;
   const snapshot = slaSnapshot(result.items, now, result.scannedIssues, routedAuto, result.routed.length - routedAuto);
+  const recoveryProposed = result.recoveryPlans.filter((plan) => plan.decision === "resolve").length;
+  const recoverySkipped = result.recoveryPlans.length - recoveryProposed;
 
   await ctx.state.set(
     { scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep },
@@ -209,6 +211,12 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       retriedKeys: retriedKeys.slice(-RETRY_KEYS_CAP),
       retryFired: retryOutcomes.filter((outcome) => outcome.applied).length,
       retryFailed: retryOutcomes.filter((outcome) => !outcome.applied && outcome.error).length,
+      recoveryPlans: result.recoveryPlans.length,
+      recoveryProposed,
+      recoverySkipped,
+      // Propose-only record: live resolve fires only in the cutover slice once
+      // an SDK resolve capability exists (gap G-02). No mutation happens here.
+      recoveryModes: result.recoveryPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
     },
   );
 
@@ -218,6 +226,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     items: result.items.length,
     retryPlans: result.retryPlans.length,
     shadow: !config.applyMutations,
+    recoveryProposed,
+    recoverySkipped,
   });
 }
 

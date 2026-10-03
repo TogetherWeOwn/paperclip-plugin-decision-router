@@ -26,6 +26,7 @@ import type { AttentionItem } from "./attention.js";
 import type { DecisionRouterConfig } from "./config.js";
 import { renderDigest } from "./digest.js";
 import { slaMetrics, sweepCounters, type MetricPoint } from "./metrics.js";
+import { planRecoveryActions, type RecoveryPlan } from "./recovery.js";
 import { planRetry, type RetryPlan } from "./retry.js";
 import { routeAttention, routeInteraction, type RoutedItem, type RoutingContext } from "./routing.js";
 import type { TriageRow } from "./triage.js";
@@ -91,6 +92,12 @@ export interface SweepResult {
   routed: RoutedItem[];
   /** One plan per `retry` destination: fire/propose/defer/skip. Pure data — the worker applies `fire` plans behind `applyMutations`. */
   retryPlans: RetryPlan[];
+  /**
+   * recovery_action resolve plans (pure planning — the sweep never mutates).
+   * `mode` is `propose` unless `applyMutations` is true; even then no live
+   * call fires until the cutover slice lands an SDK resolve capability (G-02).
+   */
+  recoveryPlans: RecoveryPlan[];
   metrics: MetricPoint[];
   digest: string;
   scannedIssues: number;
@@ -126,6 +133,7 @@ export async function sweepDecisions(
 
   const items: AttentionItem[] = [];
   const routed: RoutedItem[] = [];
+  const recoveryInputs: { id: string; kind: string; status: string }[] = [];
   const routingCtx: RoutingContext = {
     codeReviewerAgentId: config.codeReviewerAgentId ?? "<code-reviewer-unset>",
     focusAnchorIssueId: config.focusAnchorIssueId,
@@ -183,6 +191,7 @@ export async function sweepDecisions(
       };
       items.push(item);
       routed.push({ item, triage: null, destination: routeAttention(item, routingCtx) });
+      recoveryInputs.push({ id: recovery.id, kind: recovery.kind, status: recovery.status });
     }
 
     if (blockedBy.length > 0) {
@@ -246,5 +255,14 @@ export async function sweepDecisions(
     );
   const auto = routed.filter((r) => r.destination.type !== "ceo-digest").length;
   const metrics = [...slaMetrics(items, now), ...sweepCounters(auto, routed.length - auto)];
-  return { items, routed, retryPlans, metrics, digest: renderDigest(routed, now, !config.applyMutations), scannedIssues: issues.length };
+  const recoveryPlans = planRecoveryActions(recoveryInputs, { applyMutations: config.applyMutations });
+  return {
+    items,
+    routed,
+    retryPlans,
+    recoveryPlans,
+    metrics,
+    digest: renderDigest(routed, now, !config.applyMutations),
+    scannedIssues: issues.length,
+  };
 }
