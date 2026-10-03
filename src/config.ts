@@ -17,6 +17,14 @@ export interface DecisionRouterConfig {
    * no approval decide). Cut over by setting false with owner approval.
    */
   applyMutations: boolean;
+  /**
+   * Decision-log emit (default false): format one dry-run decision record per
+   * routed attention item and emit it toward the Decisions-page pipeline via
+   * the metrics counters only. Never mutates, never responds — the only sinks
+   * are `metrics.write` and the last-sweep state record, both already in the
+   * manifest. Independent of `applyMutations`.
+   */
+  decisionLogEmit: boolean;
 }
 
 export const DEFAULT_CONFIG: DecisionRouterConfig = {
@@ -26,6 +34,7 @@ export const DEFAULT_CONFIG: DecisionRouterConfig = {
   sweepPageSize: DEFAULT_SWEEP_PAGE_SIZE,
   maxRetryAttempts: 2,
   applyMutations: false,
+  decisionLogEmit: false,
 };
 
 function asNonEmptyString(value: unknown): string | null {
@@ -49,6 +58,7 @@ export function resolveConfig(raw: unknown): DecisionRouterConfig {
     sweepPageSize: asPositiveInt(row.sweepPageSize, DEFAULT_SWEEP_PAGE_SIZE),
     maxRetryAttempts: asPositiveInt(row.maxRetryAttempts, DEFAULT_CONFIG.maxRetryAttempts),
     applyMutations: row.applyMutations === true,
+    decisionLogEmit: row.decisionLogEmit === true,
   };
 }
 
@@ -83,6 +93,10 @@ export const INSTANCE_CONFIG_SCHEMA = {
     applyMutations: {
       type: "boolean",
       description: "Leave false (shadow mode) until the cutover slice. True performs respond/resolve/wakeup/decide.",
+    },
+    decisionLogEmit: {
+      type: "boolean",
+      description: "Leave false until the Decisions-page pipeline can consume the dry-run records. True emits one dry-run decision record per routed item via metrics counters only (never mutates, never responds).",
     },
   },
 } as const;

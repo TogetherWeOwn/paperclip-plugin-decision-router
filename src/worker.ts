@@ -240,6 +240,12 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
   const approvalSkipped = result.approvalPlans.length - approvalProposed;
   const respondProposed = result.respondPlans.filter((plan) => plan.decision === "respond").length;
   const respondSkipped = result.respondPlans.length - respondProposed;
+  // Decision-log emit verb: dry-run record only. Emits already surfaced as
+  // `decision_router.decision_log.emitted` metric points above (metrics.write
+  // is in the manifest); here only the counts land in state. No mutation,
+  // no respond, on this path — `channel` is `metrics` by construction.
+  const decisionLogEmitted = result.decisionLogPlans.filter((plan) => plan.decision === "emit").length;
+  const decisionLogSkipped = result.decisionLogPlans.length - decisionLogEmitted;
 
   await ctx.state.set(
     { scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep },
@@ -294,6 +300,13 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       // `issue.interactions.respond` enters the manifest with owner approval.
       // No mutation happens here.
       respondModes: result.respondPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
+      decisionLogPlans: result.decisionLogPlans.length,
+      decisionLogEmitted,
+      decisionLogSkipped,
+      // Dry-run-only record: every plan carries `mode: "dry-run"` and
+      // `channel: "metrics"` — there is no live intent on this path, only
+      // metric counters plus these counts.
+      decisionLogModes: "dry-run-only",
     },
   );
 
@@ -314,6 +327,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     approvalSkipped,
     respondProposed,
     respondSkipped,
+    decisionLogEmitted,
+    decisionLogSkipped,
   });
 }
 
@@ -379,6 +394,7 @@ export function createPlugin() {
     if (!config.ceoDeskIssueId) warnings.push("ceoDeskIssueId is unset — digests record to plugin state only");
     if (!config.codeReviewerAgentId) warnings.push("codeReviewerAgentId is unset — review routes name no owner");
     if (config.applyMutations) warnings.push("applyMutations is true — sweeps MUTATE (cutover mode)");
+    if (config.decisionLogEmit) warnings.push("decisionLogEmit is true — sweeps emit dry-run decision records via metrics counters");
     return { ok: true, warnings };
   },
   });
