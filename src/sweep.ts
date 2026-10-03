@@ -31,6 +31,13 @@ import { planRecoveryActions, type RecoveryPlan } from "./recovery.js";
 import { planRetry, type RetryPlan } from "./retry.js";
 import { planReviewActions, type ReviewPlan, type ReviewRouteInput } from "./review.js";
 import { routeAttention, routeInteraction, type RoutedItem, type RoutingContext } from "./routing.js";
+import {
+  planUnblock,
+  staleEdges,
+  unblockProposalNote,
+  type BlockerEdge,
+  type UnblockPlan,
+} from "./unblock.js";
 import type { TriageRow } from "./triage.js";
 
 export interface SweepIssue {
@@ -76,13 +83,19 @@ export interface SweepRecovery {
   createdAt: string;
 }
 
+export interface SweepBlocker {
+  id: string;
+  identifier: string | null;
+  status: string;
+}
+
 export interface SweepReads {
   listOpenIssues(companyId: string, limit: number): Promise<SweepIssue[]>;
   listPendingInteractions(issueId: string, companyId: string): Promise<SweepInteraction[]>;
   listRelations(
     issueId: string,
     companyId: string,
-  ): Promise<{ blockedByIds: string[]; activeRecovery: SweepRecovery[] }>;
+  ): Promise<{ blockedByIds: string[]; blockers: SweepBlocker[]; activeRecovery: SweepRecovery[] }>;
   listPendingApprovals(companyId: string): Promise<SweepApproval[]>;
   listFailedRuns(issueId: string, companyId: string): Promise<SweepRun[]>;
   /** Extra rows from sources the SDK cannot read (review ledger). */
@@ -114,6 +127,8 @@ export interface SweepResult {
    * (`approvals.respond`, absent from the manifest until cutover).
    */
   approvalPlans: ApprovalPlan[];
+  /** One plan per stale blocker edge: fire/propose/skip. Pure data — the worker applies `fire` plans behind `applyMutations`. */
+  unblockPlans: UnblockPlan[];
   metrics: MetricPoint[];
   digest: string;
   scannedIssues: number;
@@ -125,6 +140,8 @@ export interface SweepPrior {
   retryAttempts?: Record<string, number>;
   /** Idempotency keys already fired (crash-window dedup). */
   retriedKeys?: string[];
+  /** Unblock idempotency keys already fired (crash-window dedup). */
+  unblockedKeys?: string[];
 }
 
 const OPEN_STATUSES = new Set(["todo", "in_progress", "in_review"]);
@@ -161,6 +178,8 @@ export async function sweepDecisions(
     maxRetryAttempts: config.maxRetryAttempts,
   };
   const firedKeys = new Set(prior.retriedKeys ?? []);
+  const unblockPlans: UnblockPlan[] = [];
+  const unblockFiredKeys = new Set(prior.unblockedKeys ?? []);
 
   for (const issue of issues) {
     const label = issue.identifier ?? issue.id;
@@ -211,13 +230,25 @@ export async function sweepDecisions(
     }
 
     if (blockedBy.length > 0) {
+      // Stale-edge unblock verb: targets in a terminal status prove the edge
+      // stale. Plans are pure data; non-stale edges keep the normal route.
+      const edges: BlockerEdge[] = relations.blockers.map((blocker) => ({
+        blockerIssueId: blocker.id,
+        blockerIdentifier: blocker.identifier,
+        blockerStatus: blocker.status,
+      }));
+      const plans = staleEdges(edges).map((edge) =>
+        planUnblock({ issueId: issue.id, edge, firedKeys: unblockFiredKeys, applyMutations: config.applyMutations }),
+      );
+      unblockPlans.push(...plans);
+      const note = unblockProposalNote(plans);
       const item: AttentionItem = {
         kind: "blocker_attention",
         issueId: issue.id,
         identifier: label,
         sourceId: `blocked-by:${issue.id}`,
         pendingSince: nowIso,
-        detail: `blocked by ${blockedBy.join(", ")}`,
+        detail: note ? `blocked by ${blockedBy.join(", ")} — ${note}` : `blocked by ${blockedBy.join(", ")}`,
       };
       items.push(item);
       routed.push({ item, triage: null, destination: routeAttention(item, routingCtx) });
@@ -300,6 +331,7 @@ export async function sweepDecisions(
     reviewPlans,
     recoveryPlans,
     approvalPlans,
+    unblockPlans,
     metrics,
     digest: renderDigest(routed, now, !config.applyMutations),
     scannedIssues: issues.length,

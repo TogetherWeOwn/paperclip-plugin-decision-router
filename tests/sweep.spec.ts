@@ -35,12 +35,13 @@ function reads(): SweepReads {
       if (issueId === "issue-1") {
         return {
           blockedByIds: ["issue-9"],
+          blockers: [{ id: "issue-9", identifier: "TOG-9", status: "todo" }],
           activeRecovery: [
             { id: "ra-1", kind: "missing_disposition", status: "active", createdAt: "2026-10-03T10:00:00Z" },
           ],
         };
       }
-      return { blockedByIds: [], activeRecovery: [] };
+      return { blockedByIds: [], blockers: [], activeRecovery: [] };
     },
     async listPendingApprovals() {
       return [{ id: "ap-1", issueId: null, status: "pending", createdAt: "2026-10-03T09:00:00Z" }];
@@ -154,5 +155,56 @@ describe("sweepDecisions", () => {
     });
     expect(result.retryPlans).toHaveLength(1);
     expect(result.retryPlans[0]?.action).toBe("skip");
+  });
+
+  it("proposes (never fires) stale blocker edges in shadow mode", async () => {
+    const staleReads: SweepReads = {
+      ...reads(),
+      async listRelations(issueId) {
+        if (issueId === "issue-1") {
+          return {
+            blockedByIds: ["issue-9"],
+            blockers: [{ id: "issue-9", identifier: "TOG-9", status: "done" }],
+            activeRecovery: [],
+          };
+        }
+        return { blockedByIds: [], blockers: [], activeRecovery: [] };
+      },
+    };
+    const result = await sweepDecisions("company-1", DEFAULT_CONFIG, staleReads, NOW);
+    expect(result.unblockPlans).toHaveLength(1);
+    expect(result.unblockPlans[0]).toMatchObject({ action: "propose", blockerIssueId: "issue-9" });
+    const blocker = result.routed.find((r) => r.item.kind === "blocker_attention");
+    expect(blocker?.item.detail).toContain("TOG-9");
+  });
+
+  it("fires stale blocker edges when the flag is on and skips replayed keys", async () => {
+    const staleReads: SweepReads = {
+      ...reads(),
+      async listRelations(issueId) {
+        if (issueId === "issue-1") {
+          return {
+            blockedByIds: ["issue-9"],
+            blockers: [{ id: "issue-9", identifier: "TOG-9", status: "cancelled" }],
+            activeRecovery: [],
+          };
+        }
+        return { blockedByIds: [], blockers: [], activeRecovery: [] };
+      },
+    };
+    const config = { ...DEFAULT_CONFIG, applyMutations: true };
+    const fired = await sweepDecisions("company-1", config, staleReads, NOW);
+    expect(fired.unblockPlans[0]).toMatchObject({ action: "fire" });
+    const replayed = await sweepDecisions("company-1", config, staleReads, NOW, {
+      unblockedKeys: ["decision-router/unblock/issue-1/issue-9"],
+    });
+    expect(replayed.unblockPlans[0]).toMatchObject({ action: "skip" });
+  });
+
+  it("plans nothing for open blockers — the owner route stands", async () => {
+    const result = await sweepDecisions("company-1", DEFAULT_CONFIG, reads(), NOW);
+    expect(result.unblockPlans).toHaveLength(0);
+    const blocker = result.routed.find((r) => r.item.kind === "blocker_attention");
+    expect(blocker?.destination.type).toBe("blocker-owner");
   });
 });

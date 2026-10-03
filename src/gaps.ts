@@ -38,7 +38,7 @@ export const HOST_CAPABILITY_GAPS: HostCapabilityGap[] = [
     source: "blocker diagnostics (attention feed classification)",
     needed: "Stalled/unresolved/attention blocker classification per issue.",
     sdkToday: "issue.relations.read gives raw edges; the attention classification is board-only.",
-    slice1Workaround: "Raw edges + focus-set membership drive the blocker rule (owner vs park); no stalled-vs-attention split yet.",
+    slice1Workaround: "Raw edges + focus-set membership drive the blocker rule (owner vs park); stale-edge (target done/cancelled) unblock plans are computed with idempotent keys, and the handler removes edges only behind applyMutations — the manifest still lacks issue.relations.write until the cutover slice.",
     ledgerRef: "TOG-13346 (upstream-shaped: blocker diagnostics for plugins)",
   },
   {

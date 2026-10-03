@@ -14,6 +14,41 @@ import { createPlugin } from "../src/worker.js";
 const COMPANY = "11111111-1111-4111-8111-111111111111";
 const DESK_ISSUE = "22222222-2222-4222-8222-222222222222";
 const ISSUE = "33333333-3333-4333-8333-333333333333";
+const BLOCKED_ISSUE = "66666666-6666-4666-8666-666666666666";
+const DONE_BLOCKER = "77777777-7777-4777-8777-777777777777";
+
+function seedBlocked(harness: ReturnType<typeof createTestHarness>) {
+  harness.seed({
+    companies: [{ id: COMPANY, name: "Acme" } as never],
+    issues: [
+      {
+        id: BLOCKED_ISSUE,
+        companyId: COMPANY,
+        identifier: "TOG-10",
+        status: "todo",
+        assigneeAgentId: "agent-a",
+        title: "Blocked issue",
+        blockedBy: [{ id: DONE_BLOCKER }],
+      } as never,
+      {
+        id: DONE_BLOCKER,
+        companyId: COMPANY,
+        identifier: "TOG-9",
+        status: "done",
+        assigneeAgentId: "agent-b",
+        title: "Finished blocker",
+      } as never,
+      {
+        id: DESK_ISSUE,
+        companyId: COMPANY,
+        identifier: "TOG-2",
+        status: "todo",
+        assigneeAgentId: "agent-ceo",
+        title: "CEO desk",
+      } as never,
+    ],
+  });
+}
 
 function seed(harness: ReturnType<typeof createTestHarness>) {
   harness.seed({
@@ -190,5 +225,82 @@ describe("decision-router worker", () => {
       stateKey: STATE_KEYS.lastSweep,
     }) as { digestIssueId: null } | undefined;
     expect(lastSweep?.digestIssueId).toBeNull();
+  });
+
+  it("proposes stale-edge unblocks in shadow mode without mutating", async () => {
+    const harness = createTestHarness({ manifest, config: { ceoDeskIssueId: DESK_ISSUE } });
+    seedBlocked(harness);
+    const { definition } = createPlugin();
+    await definition.setup(harness.ctx);
+    await harness.runJob(JOB_KEYS.sweepDecisions);
+
+    const lastSweep = harness.getState({
+      scopeKind: "company",
+      scopeId: COMPANY,
+      stateKey: STATE_KEYS.lastSweep,
+    }) as { unblockedKeys: string[]; unblockFired: number; unblockFailed: number } | undefined;
+    expect(lastSweep?.unblockedKeys).toEqual([]);
+    expect(lastSweep?.unblockFired).toBe(0);
+    expect(lastSweep?.unblockFailed).toBe(0);
+
+    // The proposal surfaces in the digest; the edge itself is untouched.
+    const digest = await harness.ctx.issues.documents.get(DESK_ISSUE, CEO_DIGEST_DOCUMENT_KEY, COMPANY);
+    expect(digest?.body).toContain("TOG-9");
+    const relations = await harness.ctx.issues.relations.get(BLOCKED_ISSUE, COMPANY);
+    expect(relations.blockedBy.map((edge) => edge.id)).toEqual([DONE_BLOCKER]);
+
+    // Shadow rule: no mutations issued.
+    expect(harness.activity).toEqual([]);
+  });
+
+  it("fails closed when the flag is on but the manifest lacks relations.write", async () => {
+    const harness = createTestHarness({
+      manifest,
+      config: { ceoDeskIssueId: DESK_ISSUE, applyMutations: true },
+    });
+    seedBlocked(harness);
+    const { definition } = createPlugin();
+    await definition.setup(harness.ctx);
+    await harness.runJob(JOB_KEYS.sweepDecisions);
+
+    // The host denies the removal (missing capability); the edge survives and
+    // the failure is recorded — never retried blindly in the same sweep.
+    const relations = await harness.ctx.issues.relations.get(BLOCKED_ISSUE, COMPANY);
+    expect(relations.blockedBy.map((edge) => edge.id)).toEqual([DONE_BLOCKER]);
+    const lastSweep = harness.getState({
+      scopeKind: "company",
+      scopeId: COMPANY,
+      stateKey: STATE_KEYS.lastSweep,
+    }) as { unblockedKeys: string[]; unblockFired: number; unblockFailed: number } | undefined;
+    expect(lastSweep?.unblockedKeys).toEqual([]);
+    expect(lastSweep?.unblockFired).toBe(0);
+    expect(lastSweep?.unblockFailed).toBe(1);
+    expect(harness.logs.some((entry) => entry.message === "Decision unblock failed")).toBe(true);
+  });
+
+  it("removes the stale edge when the flag is on and the capability is granted", async () => {
+    const capabilities = [...(manifest.capabilities as string[]), "issue.relations.write"];
+    const harness = createTestHarness({
+      manifest,
+      capabilities: capabilities as never,
+      config: { ceoDeskIssueId: DESK_ISSUE, applyMutations: true },
+    });
+    seedBlocked(harness);
+    const { definition } = createPlugin();
+    await definition.setup(harness.ctx);
+    await harness.runJob(JOB_KEYS.sweepDecisions);
+
+    const relations = await harness.ctx.issues.relations.get(BLOCKED_ISSUE, COMPANY);
+    expect(relations.blockedBy).toEqual([]);
+    const lastSweep = harness.getState({
+      scopeKind: "company",
+      scopeId: COMPANY,
+      stateKey: STATE_KEYS.lastSweep,
+    }) as { unblockedKeys: string[]; unblockFired: number; unblockFailed: number } | undefined;
+    expect(lastSweep?.unblockedKeys).toEqual([
+      `decision-router/unblock/${BLOCKED_ISSUE}/${DONE_BLOCKER}`,
+    ]);
+    expect(lastSweep?.unblockFired).toBe(1);
+    expect(lastSweep?.unblockFailed).toBe(0);
   });
 });

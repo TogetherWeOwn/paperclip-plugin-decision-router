@@ -84,6 +84,7 @@ describe("sweep recovery plans", () => {
       async listRelations() {
         return {
           blockedByIds: [],
+          blockers: [],
           activeRecovery: [
             { id: "ra-1", kind: "missing_disposition", status: "active", createdAt: "2026-10-03T10:00:00Z" },
           ],
