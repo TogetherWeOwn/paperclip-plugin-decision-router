@@ -1,0 +1,249 @@
+[
+  {
+    "name": "in-focus review routes to the Code Reviewer",
+    "item": {
+      "kind": "review",
+      "issueId": "issue-1",
+      "sourceId": "review-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "code-reviewer" }
+  },
+  {
+    "name": "out-of-focus review parks with an edge to the focus anchor",
+    "item": {
+      "kind": "review",
+      "issueId": "issue-1",
+      "sourceId": "review-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": ["issue-other"],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "park", "focusAnchorIssueId": "issue-focus" }
+  },
+  {
+    "name": "out-of-focus review with no anchor falls to the CEO digest",
+    "item": {
+      "kind": "review",
+      "issueId": "issue-1",
+      "sourceId": "review-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": ["issue-other"],
+      "focusAnchorIssueId": null,
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "ceo-digest" }
+  },
+  {
+    "name": "in-focus blocker routes to the blocker owner",
+    "item": {
+      "kind": "blocker_attention",
+      "issueId": "issue-1",
+      "sourceId": "blocker-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "blocker-owner", "agentId": "agent-owner" }
+  },
+  {
+    "name": "in-focus blocker with no known owner falls to the CEO digest",
+    "item": {
+      "kind": "blocker_attention",
+      "issueId": "issue-unknown",
+      "sourceId": "blocker-9",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "ceo-digest" }
+  },
+  {
+    "name": "out-of-focus blocker parks with an edge to the focus anchor",
+    "item": {
+      "kind": "blocker_attention",
+      "issueId": "issue-1",
+      "sourceId": "blocker-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": ["issue-other"],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "park", "focusAnchorIssueId": "issue-focus" }
+  },
+  {
+    "name": "recovery action resolves per the reconciler policy",
+    "item": {
+      "kind": "recovery_action",
+      "issueId": "issue-1",
+      "sourceId": "recovery-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": {},
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "reconciler", "outcome": "resolve" }
+  },
+  {
+    "name": "failed run within the bound retries with the next attempt",
+    "item": {
+      "kind": "failed_run",
+      "issueId": "issue-1",
+      "sourceId": "run-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": {},
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "retry", "attempt": 1, "maxAttempts": 2 }
+  },
+  {
+    "name": "failed run past the retry bound falls to the CEO digest",
+    "item": {
+      "kind": "failed_run",
+      "issueId": "issue-1",
+      "sourceId": "run-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": {},
+      "retryAttempts": { "failed-run:run-1": 2 },
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "ceo-digest" }
+  },
+  {
+    "name": "approval goes to the CEO digest",
+    "item": {
+      "kind": "approval",
+      "issueId": "issue-1",
+      "sourceId": "approval-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": {},
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "ceo-digest" }
+  },
+  {
+    "name": "issue-thread interaction goes to the CEO digest",
+    "item": {
+      "kind": "issue_thread_interaction",
+      "issueId": "issue-1",
+      "sourceId": "interaction-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": {},
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": false
+    },
+    "expect": { "type": "ceo-digest" }
+  },
+  {
+    "name": "owner-reserved review never auto-routes to an agent",
+    "item": {
+      "kind": "review",
+      "issueId": "issue-1",
+      "sourceId": "review-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": true,
+      "needsHuman": false
+    },
+    "expect": { "type": "ceo-digest" }
+  },
+  {
+    "name": "review needing a human capability goes to the CEO desk via the digest",
+    "item": {
+      "kind": "review",
+      "issueId": "issue-1",
+      "sourceId": "review-1",
+      "pendingSince": "2026-10-01T00:00:00.000Z"
+    },
+    "focus": {
+      "focusIssueIds": [],
+      "focusAnchorIssueId": "issue-focus",
+      "blockerOwners": { "issue-1": "agent-owner" },
+      "retryAttempts": {},
+      "maxRetryAttempts": 2,
+      "ownerReserved": false,
+      "needsHuman": true
+    },
+    "expect": { "type": "ceo-digest" }
+  }
+]
