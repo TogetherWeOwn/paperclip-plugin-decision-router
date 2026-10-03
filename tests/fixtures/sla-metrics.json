@@ -1,0 +1,16 @@
+{
+  "at": "2026-10-03T18:00:00.000Z",
+  "scannedIssues": 2,
+  "itemsTotal": 9,
+  "routedAuto": 6,
+  "routedCeo": 3,
+  "shadow": true,
+  "byKind": [
+    { "kind": "blocker_attention", "count": 3, "medianAgeHours": 8, "maxAgeHours": 10 },
+    { "kind": "recovery_action", "count": 1, "medianAgeHours": 8, "maxAgeHours": 8 },
+    { "kind": "review", "count": 1, "medianAgeHours": null, "maxAgeHours": null },
+    { "kind": "issue_thread_interaction", "count": 2, "medianAgeHours": 2, "maxAgeHours": 3 },
+    { "kind": "failed_run", "count": 1, "medianAgeHours": 1, "maxAgeHours": 1 },
+    { "kind": "approval", "count": 1, "medianAgeHours": 9, "maxAgeHours": 9 }
+  ]
+}

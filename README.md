@@ -51,4 +51,6 @@ no new capabilities). Gatus scrapes the endpoint per company and alerts on
 
 All six kinds are always present (zero-counts included); ages are `null` when
 no item has a known age. Before the first sweep the endpoint returns
-`{"error": "no sweep yet"}`.
+`{"error": "no sweep yet"}`. Frozen payload contract: `docs/SLA_METRICS.md`,
+pinned example `tests/fixtures/sla-metrics.json`, shape probe
+`tests/sla-metrics-probe.spec.ts`.
