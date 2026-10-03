@@ -79,7 +79,7 @@ describe("sweep approval plans", () => {
         return [];
       },
       async listRelations() {
-        return { blockedByIds: [], activeRecovery: [] };
+        return { blockedByIds: [], blockers: [], activeRecovery: [] };
       },
       async listPendingApprovals() {
         return [{ id: "ap-1", issueId: "issue-1", status: "pending", createdAt: "2026-10-03T09:00:00Z" }];

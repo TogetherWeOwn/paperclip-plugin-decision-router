@@ -21,6 +21,7 @@ import { resolveConfig } from "./config.js";
 import { slaSnapshot } from "./metrics.js";
 import { applyRetryPlans, RETRY_KEYS_CAP, type RetryFirePlan } from "./retry.js";
 import { sweepDecisions, type SweepPrior, type SweepReads } from "./sweep.js";
+import { applyUnblockPlans, UNBLOCK_KEYS_CAP, type UnblockFirePlan } from "./unblock.js";
 
 function isoDate(value: Date | string | null | undefined, fallback: string): string {
   if (value instanceof Date) return value.toISOString();
@@ -84,7 +85,17 @@ function readsFor(ctx: PluginContext): SweepReads {
           });
         }
       }
-      return { blockedByIds: relations.blockedBy.map((edge) => edge.id), activeRecovery: [...seen.values()] };
+      return {
+        blockedByIds: relations.blockedBy.map((edge) => edge.id),
+        // Blocker target statuses drive the unblock verb: a target in a
+        // terminal status (done/cancelled) proves the edge stale.
+        blockers: relations.blockedBy.map((edge) => ({
+          id: edge.id,
+          identifier: edge.identifier,
+          status: edge.status,
+        })),
+        activeRecovery: [...seen.values()],
+      };
     },
     async listPendingApprovals(companyId) {
       const approvals = await ctx.approvals.list({ companyId, status: "pending" });
@@ -123,6 +134,7 @@ function readsFor(ctx: PluginContext): SweepReads {
 interface PriorRetryMemory {
   retryAttempts?: Record<string, number>;
   retriedKeys?: string[];
+  unblockedKeys?: string[];
 }
 
 async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
@@ -136,6 +148,7 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
   const prior: SweepPrior = {
     retryAttempts: priorRecord?.retryAttempts ?? {},
     retriedKeys: priorRecord?.retriedKeys ?? [],
+    unblockedKeys: priorRecord?.unblockedKeys ?? [],
   };
   const result = await sweepDecisions(companyId, config, readsFor(ctx), now, prior);
 
@@ -167,6 +180,32 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     }
     retryAttempts[outcome.plan.runKey] = outcome.plan.attempt;
     retriedKeys.push(outcome.plan.idempotencyKey);
+  }
+
+  // Blocker_attention unblock verb: remove only behind `applyMutations`. In
+  // shadow mode every plan comes back unapplied (proposals live in the item
+  // detail + digest). Note the manifest still lacks `issue.relations.write`
+  // (gap G-03): that capability lands at the cutover slice, so the host
+  // denies any premature removal too.
+  const removeEdge = async (plan: UnblockFirePlan): Promise<void> => {
+    await ctx.issues.relations.removeBlockers(plan.issueId, [plan.blockerIssueId], companyId);
+  };
+  const unblockOutcomes = await applyUnblockPlans(result.unblockPlans, {
+    applyMutations: config.applyMutations,
+    unblock: removeEdge,
+  });
+  const unblockedKeys: string[] = [...(prior.unblockedKeys ?? [])];
+  for (const outcome of unblockOutcomes) {
+    if (outcome.plan.action !== "fire") continue;
+    if (!outcome.applied) {
+      ctx.logger.error("Decision unblock failed", {
+        companyId,
+        unblockKey: outcome.plan.unblockKey,
+        error: outcome.error ?? "unknown error",
+      });
+      continue;
+    }
+    unblockedKeys.push(outcome.plan.unblockKey);
   }
 
   for (const point of result.metrics) {
@@ -241,6 +280,11 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       // `approvals.respond` enters the manifest with owner approval (TOG-13506).
       // No mutation happens here.
       approvalModes: result.approvalPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
+      // Unblock memory for the next sweep: idempotency keys already fired
+      // (capped; crash-window dedup).
+      unblockedKeys: unblockedKeys.slice(-UNBLOCK_KEYS_CAP),
+      unblockFired: unblockOutcomes.filter((outcome) => outcome.applied).length,
+      unblockFailed: unblockOutcomes.filter((outcome) => !outcome.applied && outcome.error).length,
     },
   );
 
@@ -253,6 +297,7 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     reviewRouted,
     reviewParked,
     reviewSkipped,
+    unblockPlans: result.unblockPlans.length,
     shadow: !config.applyMutations,
     recoveryProposed,
     recoverySkipped,

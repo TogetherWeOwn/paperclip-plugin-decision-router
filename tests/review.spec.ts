@@ -112,7 +112,7 @@ describe("sweep review plans", () => {
         return [];
       },
       async listRelations() {
-        return { blockedByIds: [], activeRecovery: [] };
+        return { blockedByIds: [], blockers: [], activeRecovery: [] };
       },
       async listPendingApprovals() {
         return [];
