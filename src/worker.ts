@@ -238,6 +238,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
   const recoverySkipped = result.recoveryPlans.length - recoveryProposed;
   const approvalProposed = result.approvalPlans.filter((plan) => plan.decision === "approve").length;
   const approvalSkipped = result.approvalPlans.length - approvalProposed;
+  const respondProposed = result.respondPlans.filter((plan) => plan.decision === "respond").length;
+  const respondSkipped = result.respondPlans.length - respondProposed;
 
   await ctx.state.set(
     { scopeKind: "company", scopeId: companyId, stateKey: STATE_KEYS.lastSweep },
@@ -285,6 +287,13 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       unblockedKeys: unblockedKeys.slice(-UNBLOCK_KEYS_CAP),
       unblockFired: unblockOutcomes.filter((outcome) => outcome.applied).length,
       unblockFailed: unblockOutcomes.filter((outcome) => !outcome.applied && outcome.error).length,
+      respondPlans: result.respondPlans.length,
+      respondProposed,
+      respondSkipped,
+      // Propose-only record: live respond fires only in the cutover slice once
+      // `issue.interactions.respond` enters the manifest with owner approval.
+      // No mutation happens here.
+      respondModes: result.respondPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
     },
   );
 
@@ -303,6 +312,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     recoverySkipped,
     approvalProposed,
     approvalSkipped,
+    respondProposed,
+    respondSkipped,
   });
 }
 
