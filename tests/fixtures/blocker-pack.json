@@ -1,0 +1,74 @@
+{
+  "now": "2026-10-03T18:00:00.000Z",
+  "inputs": [
+    {
+      "blockedIssueId": "issue-1",
+      "blockedIdentifier": "TOG-1",
+      "blockerIssueId": "issue-9",
+      "blockerIdentifier": "TOG-9",
+      "blockerStatus": "done",
+      "ownerAgentId": "agent-a",
+      "pendingSince": "2026-10-03T08:00:00Z"
+    },
+    {
+      "blockedIssueId": "issue-2",
+      "blockedIdentifier": "TOG-2",
+      "blockerIssueId": "issue-10",
+      "blockerIdentifier": "TOG-10",
+      "blockerStatus": "cancelled",
+      "ownerAgentId": "agent-b",
+      "pendingSince": "2026-10-03T12:00:00Z"
+    },
+    {
+      "blockedIssueId": "issue-3",
+      "blockedIdentifier": "TOG-3",
+      "blockerIssueId": "issue-11",
+      "blockerIdentifier": "TOG-11",
+      "blockerStatus": "in_progress",
+      "ownerAgentId": "agent-c",
+      "pendingSince": "2026-10-03T15:00:00Z"
+    },
+    {
+      "blockedIssueId": "issue-4",
+      "blockedIdentifier": "TOG-4",
+      "blockerIssueId": "issue-12",
+      "blockerIdentifier": "TOG-12",
+      "blockerStatus": "blocked",
+      "ownerAgentId": null,
+      "pendingSince": "garbage"
+    }
+  ],
+  "expect": {
+    "edgeCount": 4,
+    "staleCount": 2,
+    "openCount": 2,
+    "unknownOwnerCount": 1,
+    "unknownAgeCount": 1,
+    "edges": [
+      {
+        "blockerIssueId": "issue-9",
+        "stale": true,
+        "ageHours": 10,
+        "proposal": "proposes unblock: TOG-9 (done) blocks TOG-1 — 10h old, agent-a"
+      },
+      {
+        "blockerIssueId": "issue-10",
+        "stale": true,
+        "ageHours": 6,
+        "proposal": "proposes unblock: TOG-10 (cancelled) blocks TOG-2 — 6h old, agent-b"
+      },
+      {
+        "blockerIssueId": "issue-11",
+        "stale": false,
+        "ageHours": 3,
+        "proposal": "owner route stands: TOG-11 (in_progress) blocks TOG-3 — 3h old, agent-c"
+      },
+      {
+        "blockerIssueId": "issue-12",
+        "stale": false,
+        "ageHours": null,
+        "proposal": "owner route stands: TOG-12 (blocked) blocks TOG-4 — age unknown, owner unknown"
+      }
+    ]
+  }
+}
