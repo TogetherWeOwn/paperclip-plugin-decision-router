@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Paperclip plugin: no approval request sits unanswered. Routes every Decisions-page item (interactions, recovery, blocker, review, failed-run, approval) deterministically or to the CEO desk.",
   "license": "MIT",
+  "keywords": [],
   "type": "module",
   "engines": {
     "node": ">=22"
