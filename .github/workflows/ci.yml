@@ -1,12 +1,74 @@
 name: CI
 
+# CI runs only what a change affects. This is a one-job repo, so the only
+# gate is docs-only: a PR that touches nothing but markdown or docs/ skips
+# `verify` while `ci-ok` stays green. Everything else (src, tests, package
+# manifests and lockfile, build config, .github/**) runs the full suite.
+# Push to main and the nightly schedule always run everything.
+#
+# Branch protection requires only `ci-ok`. Never put `paths:` on the
+# workflow triggers below: a workflow that does not start leaves a required
+# check pending forever. Gate at the job level instead.
+
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "23 4 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Only supersede PR runs; push and nightly share a group on refs/heads/main.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Native `git diff --name-only` against the merge base; no third-party
+  # action. Non-PR events (push to main, schedule, dispatch) always run
+  # everything.
+  changes:
+    name: Change detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: detect
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "non-PR event (${{ github.event_name }}): full run"
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          merge_base="$(git merge-base "$base" "$head")"
+          # --no-renames: a rename from src/ to docs/ must list the old path too.
+          files="$(git diff --name-only --no-renames "$merge_base" "$head")"
+          echo "changed files:"; echo "$files"
+          if [ -z "$files" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Docs-only = every file is markdown or under docs/.
+          # Here-string, not a pipe: under pipefail a long path list makes grep
+          # exit early and SIGPIPE the writer, which misreads as docs-only.
+          if grep -vqE '(\.md$|^docs/)' <<<"$files"; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          fi
+
   verify:
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,3 +78,26 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+
+  # The single required aggregator. Skipped jobs count as success here, so
+  # docs-only gating can never block a merge; a failed or cancelled job
+  # always does.
+  ci-ok:
+    name: ci-ok
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - changes
+      - verify
+    steps:
+      - name: Aggregate gated results
+        run: |
+          set -euo pipefail
+          failed="${{ contains(needs.*.result, 'failure') }}"
+          cancelled="${{ contains(needs.*.result, 'cancelled') }}"
+          if [ "$failed" = "true" ] || [ "$cancelled" = "true" ]; then
+            echo "::error::a needed job failed or was cancelled"
+            exit 1
+          fi
+          echo "ci-ok: every needed job succeeded or was skipped"
