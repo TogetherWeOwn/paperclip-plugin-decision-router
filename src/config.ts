@@ -42,6 +42,15 @@ export interface DecisionRouterConfig {
    * then the planner runs on caller-supplied rows only.
    */
   decisionBundleRoute: boolean;
+  /**
+   * Request-confirmation route (default false): plan already-answered
+   * request_confirmation interactions as propose-only accept-effect records
+   * for the test harness. Never answers, never wakes — plans are
+   * propose-only; the harness applies them to a fake store. Sweep wiring
+   * waits on an accept-effect read path (no SDK list exists today); until
+   * then the planner runs on caller-supplied rows only.
+   */
+  requestConfirmationRoute: boolean;
 }
 
 export const DEFAULT_CONFIG: DecisionRouterConfig = {
@@ -54,6 +63,7 @@ export const DEFAULT_CONFIG: DecisionRouterConfig = {
   decisionLogEmit: false,
   joinRequestRoute: false,
   decisionBundleRoute: false,
+  requestConfirmationRoute: false,
 };
 
 function asNonEmptyString(value: unknown): string | null {
@@ -80,6 +90,7 @@ export function resolveConfig(raw: unknown): DecisionRouterConfig {
     decisionLogEmit: row.decisionLogEmit === true,
     joinRequestRoute: row.joinRequestRoute === true,
     decisionBundleRoute: row.decisionBundleRoute === true,
+    requestConfirmationRoute: row.requestConfirmationRoute === true,
   };
 }
 
@@ -126,6 +137,10 @@ export const INSTANCE_CONFIG_SCHEMA = {
     decisionBundleRoute: {
       type: "boolean",
       description: "Leave false until a decision-bundle read path lands. True plans cross-issue decision bundles as ordered idempotent effect lists for the test harness only (never mutates, propose-only).",
+    },
+    requestConfirmationRoute: {
+      type: "boolean",
+      description: "Leave false until an accept-effect read path lands. True plans already-answered request_confirmation interactions as propose-only accept-effect records for the test harness only (never answers, never wakes, propose-only).",
     },
   },
 } as const;
