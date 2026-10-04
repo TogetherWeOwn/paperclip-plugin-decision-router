@@ -240,6 +240,12 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
   const approvalSkipped = result.approvalPlans.length - approvalProposed;
   const respondProposed = result.respondPlans.filter((plan) => plan.decision === "respond").length;
   const respondSkipped = result.respondPlans.length - respondProposed;
+  // Budget-alert route verb: propose-only record. Live budget decisions fire
+  // only in the cutover slice once a budget decision capability exists
+  // (gap G-07); the manifest deliberately requests no mutation capability
+  // here, so no live call can fire on this path. No mutation happens here.
+  const budgetAlertProposed = result.budgetAlertPlans.filter((plan) => plan.decision === "propose").length;
+  const budgetAlertSkipped = result.budgetAlertPlans.length - budgetAlertProposed;
   // Decision-log emit verb: dry-run record only. Emits already surfaced as
   // `decision_router.decision_log.emitted` metric points above (metrics.write
   // is in the manifest); here only the counts land in state. No mutation,
@@ -300,6 +306,15 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
       // `issue.interactions.respond` enters the manifest with owner approval.
       // No mutation happens here.
       respondModes: result.respondPlans.every((plan) => plan.mode === "propose") ? "propose-only" : "apply-intent",
+      budgetAlertPlans: result.budgetAlertPlans.length,
+      budgetAlertProposed,
+      budgetAlertSkipped,
+      // Propose-only record: live budget decisions fire only in the cutover
+      // slice once a budget decision capability exists (gap G-07).
+      // No mutation happens here.
+      budgetAlertModes: result.budgetAlertPlans.every((plan) => plan.mode === "propose")
+        ? "propose-only"
+        : "apply-intent",
       decisionLogPlans: result.decisionLogPlans.length,
       decisionLogEmitted,
       decisionLogSkipped,
@@ -327,6 +342,8 @@ async function runSweep(ctx: PluginContext, companyId: string): Promise<void> {
     approvalSkipped,
     respondProposed,
     respondSkipped,
+    budgetAlertProposed,
+    budgetAlertSkipped,
     decisionLogEmitted,
     decisionLogSkipped,
   });

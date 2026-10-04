@@ -63,7 +63,7 @@ describe("slaMetrics", () => {
     expect(sweepCounters(3, 2)).toContainEqual({ name: "decision_router.sweep.items_total", value: 5 });
   });
 
-  it("builds a Gatus-ready snapshot with all six kinds", () => {
+  it("builds a Gatus-ready snapshot with all seven kinds", () => {
     const snapshot = slaSnapshot(
       [item("blocker_attention", "2026-10-03T08:00:00Z"), item("approval", "2026-10-03T09:00:00Z")],
       NOW,
@@ -72,13 +72,18 @@ describe("slaMetrics", () => {
       1,
     );
     expect(snapshot).toMatchObject({ scannedIssues: 2, itemsTotal: 2, routedAuto: 1, routedCeo: 1 });
-    expect(snapshot.byKind).toHaveLength(6);
+    expect(snapshot.byKind).toHaveLength(7);
     expect(snapshot.byKind.find((entry) => entry.kind === "blocker_attention")).toMatchObject({
       count: 1,
       medianAgeHours: 10,
       maxAgeHours: 10,
     });
     expect(snapshot.byKind.find((entry) => entry.kind === "review")).toMatchObject({
+      count: 0,
+      medianAgeHours: null,
+      maxAgeHours: null,
+    });
+    expect(snapshot.byKind.find((entry) => entry.kind === "budget_alert")).toMatchObject({
       count: 0,
       medianAgeHours: null,
       maxAgeHours: null,

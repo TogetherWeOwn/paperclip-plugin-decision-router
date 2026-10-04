@@ -164,6 +164,7 @@ describe("decision-router worker", () => {
         "issue_thread_interaction",
         "failed_run",
         "approval",
+        "budget_alert",
       ]),
     );
     const entry = (kind: string) => {

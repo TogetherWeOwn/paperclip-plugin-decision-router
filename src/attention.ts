@@ -5,7 +5,7 @@
  * Each kind names the verb that clears it:
  * blocker_attention → unblock · recovery_action → resolve · review → choose
  * review path · issue_thread_interaction → respond/accept · failed_run → retry
- * · approval → approve.
+ * · approval → approve · budget_alert → propose.
  */
 export const ATTENTION_KINDS = [
   "blocker_attention",
@@ -14,6 +14,7 @@ export const ATTENTION_KINDS = [
   "issue_thread_interaction",
   "failed_run",
   "approval",
+  "budget_alert",
 ] as const;
 
 export type AttentionKind = (typeof ATTENTION_KINDS)[number];
@@ -30,6 +31,13 @@ export interface AttentionItem {
   pendingSince: string;
   /** Free-form source detail (policy, addressee, error) for the digest. */
   detail?: string;
+  /**
+   * Budget-alert carried fields: set only on `budget_alert` items supplied by
+   * the caller (no SDK read — gap G-07). Absent/ungraded values fail closed in
+   * `budgetAlert.ts`: the item routes to the digest but never proposes.
+   */
+  budgetSeverity?: string | null;
+  budgetStatus?: string | null;
 }
 
 /** Whole hours between `pendingSince` and `now`. Unknown/unparseable → null (never 0: absence is not youth). */

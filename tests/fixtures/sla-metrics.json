@@ -11,6 +11,7 @@
     { "kind": "review", "count": 1, "medianAgeHours": null, "maxAgeHours": null },
     { "kind": "issue_thread_interaction", "count": 2, "medianAgeHours": 2, "maxAgeHours": 3 },
     { "kind": "failed_run", "count": 1, "medianAgeHours": 1, "maxAgeHours": 1 },
-    { "kind": "approval", "count": 1, "medianAgeHours": 9, "maxAgeHours": 9 }
+    { "kind": "approval", "count": 1, "medianAgeHours": 9, "maxAgeHours": 9 },
+    { "kind": "budget_alert", "count": 0, "medianAgeHours": null, "maxAgeHours": null }
   ]
 }
