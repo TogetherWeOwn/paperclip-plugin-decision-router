@@ -51,6 +51,15 @@ export interface DecisionRouterConfig {
    * then the planner runs on caller-supplied rows only.
    */
   requestConfirmationRoute: boolean;
+  /**
+   * Suggest-tasks route (default false): plan suggest_tasks issue-thread
+   * interactions as propose-only subtask-creation records for the test
+   * harness. Never creates — plans are propose-only; the harness applies them
+   * to a fake store. Sweep wiring waits on a suggest-tasks read path (no SDK
+   * list exists today); until then the planner runs on caller-supplied rows
+   * only.
+   */
+  suggestTasksRoute: boolean;
 }
 
 export const DEFAULT_CONFIG: DecisionRouterConfig = {
@@ -64,6 +73,7 @@ export const DEFAULT_CONFIG: DecisionRouterConfig = {
   joinRequestRoute: false,
   decisionBundleRoute: false,
   requestConfirmationRoute: false,
+  suggestTasksRoute: false,
 };
 
 function asNonEmptyString(value: unknown): string | null {
@@ -91,6 +101,7 @@ export function resolveConfig(raw: unknown): DecisionRouterConfig {
     joinRequestRoute: row.joinRequestRoute === true,
     decisionBundleRoute: row.decisionBundleRoute === true,
     requestConfirmationRoute: row.requestConfirmationRoute === true,
+    suggestTasksRoute: row.suggestTasksRoute === true,
   };
 }
 
@@ -141,6 +152,10 @@ export const INSTANCE_CONFIG_SCHEMA = {
     requestConfirmationRoute: {
       type: "boolean",
       description: "Leave false until an accept-effect read path lands. True plans already-answered request_confirmation interactions as propose-only accept-effect records for the test harness only (never answers, never wakes, propose-only).",
+    },
+    suggestTasksRoute: {
+      type: "boolean",
+      description: "Leave false until a suggest-tasks read path lands. True plans suggest_tasks interactions as propose-only subtask-creation records for the test harness only (never creates, propose-only).",
     },
   },
 } as const;
