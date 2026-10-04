@@ -33,6 +33,15 @@ export interface DecisionRouterConfig {
    * runs on caller-supplied rows only.
    */
   joinRequestRoute: boolean;
+  /**
+   * Decision-bundle route (default false): plan cross-issue decision bundles
+   * (comment_on_issue, assign_issue, update_issue_status) as ordered,
+   * idempotent effect lists for the test harness. Never mutates — plans are
+   * propose-only; the harness applies them to a fake store. Sweep wiring
+   * waits on a decision-bundle read path (no SDK list exists today); until
+   * then the planner runs on caller-supplied rows only.
+   */
+  decisionBundleRoute: boolean;
 }
 
 export const DEFAULT_CONFIG: DecisionRouterConfig = {
@@ -44,6 +53,7 @@ export const DEFAULT_CONFIG: DecisionRouterConfig = {
   applyMutations: false,
   decisionLogEmit: false,
   joinRequestRoute: false,
+  decisionBundleRoute: false,
 };
 
 function asNonEmptyString(value: unknown): string | null {
@@ -69,6 +79,7 @@ export function resolveConfig(raw: unknown): DecisionRouterConfig {
     applyMutations: row.applyMutations === true,
     decisionLogEmit: row.decisionLogEmit === true,
     joinRequestRoute: row.joinRequestRoute === true,
+    decisionBundleRoute: row.decisionBundleRoute === true,
   };
 }
 
@@ -111,6 +122,10 @@ export const INSTANCE_CONFIG_SCHEMA = {
     joinRequestRoute: {
       type: "boolean",
       description: "Leave false until a join-request read path lands. True validates join-request rows and routes them to propose-only CEO-digest proposals (never approves, never mutates).",
+    },
+    decisionBundleRoute: {
+      type: "boolean",
+      description: "Leave false until a decision-bundle read path lands. True plans cross-issue decision bundles as ordered idempotent effect lists for the test harness only (never mutates, propose-only).",
     },
   },
 } as const;
