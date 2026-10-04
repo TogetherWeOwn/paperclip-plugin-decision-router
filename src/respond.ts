@@ -15,8 +15,9 @@
  * The only planned outcome is `respond` (the digest verb for interactions,
  * `digest.ts` KIND_VERBS). The accept/reject outcome arrives via the CEO
  * grammar (`ANSWER <id> accept|reject`) once live reads land. Skip paths fail
- * closed: malformed rows, non-pending statuses, and duplicate keys never
- * draft a respond.
+ * closed: malformed rows, non-pending statuses, duplicate keys, and
+ * `human_only` rows never draft a respond — a row only a human may answer is
+ * never auto-answered (parity with the triage OWNER_ONLY verdict).
  */
 
 export interface RespondActionInput {
@@ -28,6 +29,12 @@ export interface RespondActionInput {
   kind: string;
   /** Interaction status; only pending attention drafts a respond. */
   status: string;
+  /**
+   * Resolver policy from listInteractions. A `human_only` row never drafts —
+   * only a human may answer it. Absent/unknown policies keep the legacy draft
+   * path; only the proven-human case is subtracted.
+   */
+  effectiveResolverPolicy?: string | null;
 }
 
 export type RespondDecision = "respond" | "skip";
@@ -112,6 +119,21 @@ export function planRespondAction(action: RespondActionInput, opts: PlanRespondO
       mode,
       idempotencyKey: key,
       reason: `skip: status "${status || "(missing)"}" is not attention (pending) — decided history never re-responds`,
+    };
+  }
+  // human_only rows never draft a respond: only a human may answer them
+  // (triage marks the same rows OWNER_ONLY). Exact match only — absent or
+  // unknown policies keep the legacy draft path.
+  if (action.effectiveResolverPolicy === "human_only") {
+    return {
+      interactionId: id,
+      issueId,
+      kind,
+      decision: "skip",
+      outcome: "respond",
+      mode,
+      idempotencyKey: key,
+      reason: 'skip: effectiveResolverPolicy is "human_only" — only a human may answer; never auto-responds',
     };
   }
   return {

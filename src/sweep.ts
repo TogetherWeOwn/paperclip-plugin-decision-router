@@ -37,7 +37,7 @@ import {
 import { renderDigest } from "./digest.js";
 import { slaMetrics, sweepCounters, type MetricPoint } from "./metrics.js";
 import { planRecoveryActions, type RecoveryPlan } from "./recovery.js";
-import { planRespondActions, type RespondPlan } from "./respond.js";
+import { planRespondActions, type RespondActionInput, type RespondPlan } from "./respond.js";
 import { planRetry, type RetryPlan } from "./retry.js";
 import { planReviewActions, type ReviewPlan, type ReviewRouteInput } from "./review.js";
 import { routeAttention, routeInteraction, type RoutedItem, type RoutingContext } from "./routing.js";
@@ -200,7 +200,7 @@ export async function sweepDecisions(
   const items: AttentionItem[] = [];
   const routed: RoutedItem[] = [];
   const recoveryInputs: { id: string; kind: string; status: string }[] = [];
-  const respondInputs: { id: string; issueId: string; kind: string; status: string }[] = [];
+  const respondInputs: RespondActionInput[] = [];
   const routingCtx: RoutingContext = {
     codeReviewerAgentId: config.codeReviewerAgentId ?? "<code-reviewer-unset>",
     focusAnchorIssueId: config.focusAnchorIssueId,
@@ -247,7 +247,14 @@ export async function sweepDecisions(
         continuationPolicy: ix.continuationPolicy,
       };
       routed.push(routeInteraction(item, row, routingCtx));
-      respondInputs.push({ id: ix.id, issueId: issue.id, kind: ix.kind, status: ix.status });
+      // Thread the resolver policy: `human_only` rows never draft a respond.
+      respondInputs.push({
+        id: ix.id,
+        issueId: issue.id,
+        kind: ix.kind,
+        status: ix.status,
+        effectiveResolverPolicy: ix.effectiveResolverPolicy,
+      });
     }
 
     for (const recovery of relations.activeRecovery) {

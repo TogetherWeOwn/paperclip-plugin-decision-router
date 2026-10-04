@@ -77,7 +77,9 @@ describe("sweep respond plans", () => {
             id: "ix-1",
             kind: "ask_user_questions",
             status: "pending",
-            effectiveResolverPolicy: "human_only",
+            // Draftable row: the human_only skip path is pinned in
+            // human-only-skip.spec.ts; this fixture covers respond drafting.
+            effectiveResolverPolicy: "board_or_agents",
             createdByAgentId: "agent-a",
             addresseeAgentId: null,
             hasToolAction: false,
