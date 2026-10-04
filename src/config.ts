@@ -25,6 +25,14 @@ export interface DecisionRouterConfig {
    * manifest. Independent of `applyMutations`.
    */
   decisionLogEmit: boolean;
+  /**
+   * Join-request route (default false): validate join-request rows and route
+   * them to propose-only CEO-digest proposals. Never approves, never mutates
+   * — join approval stays a President/COO decision. Sweep wiring waits on a
+   * join-request read path (no SDK list exists today); until then the planner
+   * runs on caller-supplied rows only.
+   */
+  joinRequestRoute: boolean;
 }
 
 export const DEFAULT_CONFIG: DecisionRouterConfig = {
@@ -35,6 +43,7 @@ export const DEFAULT_CONFIG: DecisionRouterConfig = {
   maxRetryAttempts: 2,
   applyMutations: false,
   decisionLogEmit: false,
+  joinRequestRoute: false,
 };
 
 function asNonEmptyString(value: unknown): string | null {
@@ -59,6 +68,7 @@ export function resolveConfig(raw: unknown): DecisionRouterConfig {
     maxRetryAttempts: asPositiveInt(row.maxRetryAttempts, DEFAULT_CONFIG.maxRetryAttempts),
     applyMutations: row.applyMutations === true,
     decisionLogEmit: row.decisionLogEmit === true,
+    joinRequestRoute: row.joinRequestRoute === true,
   };
 }
 
@@ -97,6 +107,10 @@ export const INSTANCE_CONFIG_SCHEMA = {
     decisionLogEmit: {
       type: "boolean",
       description: "Leave false until the Decisions-page pipeline can consume the dry-run records. True emits one dry-run decision record per routed item via metrics counters only (never mutates, never responds).",
+    },
+    joinRequestRoute: {
+      type: "boolean",
+      description: "Leave false until a join-request read path lands. True validates join-request rows and routes them to propose-only CEO-digest proposals (never approves, never mutates).",
     },
   },
 } as const;
