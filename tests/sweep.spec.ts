@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "../src/config.js";
 import { JOB_KEYS, STATE_KEYS } from "../src/constants.js";
 import manifest from "../src/manifest.js";
-import { applyRetryPlans } from "../src/retry.js";
+import * as retryModule from "../src/retry.js";
 import { sweepDecisions, type SweepPrior, type SweepReads, type SweepResult } from "../src/sweep.js";
-import { applyUnblockPlans } from "../src/unblock.js";
+import * as unblockModule from "../src/unblock.js";
 import { createPlugin } from "../src/worker.js";
 
 const NOW = new Date("2026-10-03T18:00:00Z");
@@ -359,8 +359,8 @@ function assertRestrictedControls(result: SweepResult) {
 async function assertShadow(result: SweepResult) {
   const fire = vi.fn(async () => {});
   const unblock = vi.fn(async () => {});
-  const retryOutcomes = await applyRetryPlans(result.retryPlans, { applyMutations: false, fire });
-  const unblockOutcomes = await applyUnblockPlans(result.unblockPlans, { applyMutations: false, unblock });
+  const retryOutcomes = await retryModule.applyRetryPlans(result.retryPlans, { applyMutations: false, fire });
+  const unblockOutcomes = await unblockModule.applyUnblockPlans(result.unblockPlans, { applyMutations: false, unblock });
   expect(retryOutcomes.every((outcome) => !outcome.applied)).toBe(true);
   expect(unblockOutcomes.every((outcome) => !outcome.applied)).toBe(true);
   expect(fire).not.toHaveBeenCalled();
@@ -487,6 +487,12 @@ describe("shadow sweep order and replay invariants", () => {
     vi.spyOn(harness.ctx.approvals, "list").mockImplementation(async () => (
       await fixture.listPendingApprovals("company-1")
     ).map((approval) => ({ ...approval, payload: approval.issueId ? { issueId: approval.issueId } : {} })) as never);
+    // Call-through spies prove each real executor receives actionable plans;
+    // zero write calls alone would also pass with missing retry/unblock inputs.
+    const applyRetries = vi.spyOn(retryModule, "applyRetryPlans");
+    const applyUnblocks = vi.spyOn(unblockModule, "applyUnblockPlans");
+    const stateSet = vi.spyOn(harness.ctx.state, "set");
+    const sweepErrors = vi.spyOn(harness.ctx.logger, "error");
     const writes = [
       vi.spyOn(harness.ctx.issues, "requestWakeup"), vi.spyOn(harness.ctx.issues, "requestWakeups"),
       vi.spyOn(harness.ctx.issues.relations, "removeBlockers"), vi.spyOn(harness.ctx.approvals, "decide"),
@@ -501,11 +507,48 @@ describe("shadow sweep order and replay invariants", () => {
     vi.setSystemTime(NOW);
     try {
       await createPlugin().definition.setup(harness.ctx);
-      await harness.runJob(JOB_KEYS.sweepDecisions);
       const scope = { scopeKind: "company" as const, scopeId: "company-1", stateKey: STATE_KEYS.lastSweep };
+      const completedSweeps = () => stateSet.mock.calls.filter(([query]) => (
+        query.scopeKind === scope.scopeKind && query.scopeId === scope.scopeId && query.stateKey === scope.stateKey
+      ));
+      await harness.runJob(JOB_KEYS.sweepDecisions);
+      expect(completedSweeps()).toHaveLength(1);
       const first = structuredClone(harness.getState(scope));
       await harness.runJob(JOB_KEYS.sweepDecisions);
+      expect(completedSweeps()).toHaveLength(2);
+      expect(sweepErrors).not.toHaveBeenCalled();
+      expect(completedSweeps().map(([, record]) => record)).toEqual([first, first]);
       expect(harness.getState(scope)).toEqual(first);
+      expect(applyRetries).toHaveBeenCalledTimes(2);
+      for (const [plans, deps] of applyRetries.mock.calls) {
+        expect(deps.applyMutations).toBe(false);
+        expect(plans).toHaveLength(2);
+        expect(plans).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            action: "propose", issueId: "issue-3", runKey: "failed-run:run-1", attempt: 1,
+            idempotencyKey: "decision-router/retry/run-1/attempt-1",
+          }),
+          expect.objectContaining({
+            action: "propose", issueId: "issue-3", runKey: "failed-run:run-2", attempt: 1,
+            idempotencyKey: "decision-router/retry/run-2/attempt-1",
+          }),
+        ]));
+      }
+      expect(applyUnblocks).toHaveBeenCalledTimes(2);
+      for (const [plans, deps] of applyUnblocks.mock.calls) {
+        expect(deps.applyMutations).toBe(false);
+        expect(plans).toHaveLength(2);
+        expect(plans).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            action: "propose", issueId: "issue-1", blockerIssueId: "issue-8", blockerStatus: "done",
+            unblockKey: "decision-router/unblock/issue-1/issue-8",
+          }),
+          expect.objectContaining({
+            action: "propose", issueId: "issue-1", blockerIssueId: "issue-7", blockerStatus: "cancelled",
+            unblockKey: "decision-router/unblock/issue-1/issue-7",
+          }),
+        ]));
+      }
       expect(first).toMatchObject({
         at: NOW.toISOString(), shadow: true, scannedIssues: 2, items: 14,
         retryAttempts: {}, retriedKeys: [], unblockedKeys: [], retryFired: 0, unblockFired: 0,
@@ -516,7 +559,7 @@ describe("shadow sweep order and replay invariants", () => {
       expect(harness.activity).toEqual([]);
     } finally {
       vi.useRealTimers();
-      for (const write of writes) write.mockRestore();
+      for (const spy of [...writes, applyRetries, applyUnblocks, stateSet, sweepErrors]) spy.mockRestore();
     }
   });
 });
