@@ -44,7 +44,15 @@ describe("manifest", () => {
     expect(resolveConfig({ sweepPageSize: -5 }).sweepPageSize).toBe(DEFAULT_CONFIG.sweepPageSize);
   });
 
-  it("tracks all six attention sources as gaps or reads", () => {
-    expect(HOST_CAPABILITY_GAPS.map((gap) => gap.id)).toEqual(["G-01", "G-02", "G-03", "G-04", "G-05", "G-06"]);
+  it("tracks all seven attention sources as gaps or reads", () => {
+    expect(HOST_CAPABILITY_GAPS.map((gap) => gap.id)).toEqual([
+      "G-01",
+      "G-02",
+      "G-03",
+      "G-04",
+      "G-05",
+      "G-06",
+      "G-07",
+    ]);
   });
 });

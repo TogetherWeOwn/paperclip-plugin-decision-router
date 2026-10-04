@@ -65,4 +65,12 @@ export const HOST_CAPABILITY_GAPS: HostCapabilityGap[] = [
     slice1Workaround: "Per-issue sweep (listInteractions + relations + orchestration) reconstructs the feed without the board ranking.",
     ledgerRef: "TOG-13346 (upstream-shaped: attention-feed read for the CEO desk)",
   },
+  {
+    id: "G-07",
+    source: "budget alerts (spend/quota attention rows)",
+    needed: "List + decide budget alerts (spend/quota attention rows).",
+    sdkToday: "No SDK method. No cost/budget alert read capability exists for plugins.",
+    slice1Workaround: "Budget-alert items enter the sweep only via caller-supplied rows; validated rows propose for the CEO digest behind applyMutations, and the manifest still requests no budget decision capability until the cutover slice. Ungraded rows never propose (fail closed).",
+    ledgerRef: "TOG-13346 (upstream-shaped: budget-alert read for plugins)",
+  },
 ];

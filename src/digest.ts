@@ -17,6 +17,7 @@ const KIND_VERBS: Record<AttentionItem["kind"], string> = {
   issue_thread_interaction: "respond/accept",
   failed_run: "retry",
   approval: "approve",
+  budget_alert: "propose",
 };
 
 function describeDestination(routed: RoutedItem): string {
@@ -50,6 +51,7 @@ function grammarStub(routed: RoutedItem): string {
       return `APPROVE ${item.sourceId}`;
     case "blocker_attention":
     case "review":
+    case "budget_alert":
       return `DECIDE ${item.identifier ?? item.issueId} <option-id>`;
   }
 }

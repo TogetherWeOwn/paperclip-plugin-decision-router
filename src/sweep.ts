@@ -16,6 +16,8 @@
  *                              list/resolve is gap G-02).
  *   review                   — NO SDK read (gap G-04); routed by kind when a
  *                              review row is supplied by the caller.
+ *   budget_alert             — NO SDK read (gap G-07); routed by kind when a
+ *                              budget-alert row is supplied by the caller.
  *
  * Shadow rule: this module NEVER mutates. It returns routes + digest +
  * metrics; the worker persists those. Applying a route (respond, resolve,
@@ -24,6 +26,7 @@
  */
 import type { AttentionItem } from "./attention.js";
 import { planApprovalActions, type ApprovalPlan } from "./approval.js";
+import { planBudgetAlertActions, type BudgetAlertPlan } from "./budgetAlert.js";
 import type { DecisionRouterConfig } from "./config.js";
 import {
   decisionLogMetrics,
@@ -144,6 +147,14 @@ export interface SweepResult {
    * cutover).
    */
   respondPlans: RespondPlan[];
+  /**
+   * budget_alert proposal plans (pure planning — the sweep never mutates).
+   * One plan per routed `budget_alert` item: `propose` for validated rows,
+   * `skip` otherwise. `mode` is `propose` unless `applyMutations` is true;
+   * even then no live call fires until the cutover slice lands a budget
+   * decision capability (G-07).
+   */
+  budgetAlertPlans: BudgetAlertPlan[];
   /**
    * decision-log emit plans (pure planning — the sweep never mutates and
    * never responds). One plan per routed item; `emit` behind the dedicated
@@ -348,6 +359,22 @@ export async function sweepDecisions(
   const recoveryPlans = planRecoveryActions(recoveryInputs, { applyMutations: config.applyMutations });
   const approvalPlans = planApprovalActions(approvalInputs, { applyMutations: config.applyMutations });
   const respondPlans = planRespondActions(respondInputs, { applyMutations: config.applyMutations });
+  // Budget-alert proposal inputs come off the routed rows: the routing rule
+  // already sent each item to the CEO digest; the planner validates each row
+  // (severity + attention status) into a propose/skip plan behind
+  // `applyMutations`. Caller-supplied rows carry severity/status on the item
+  // (no SDK read — gap G-07); absent values fail closed to `skip`.
+  const budgetAlertPlans = planBudgetAlertActions(
+    routed
+      .filter((r) => r.item.kind === "budget_alert")
+      .map((r) => ({
+        id: r.item.sourceId,
+        issueId: r.item.issueId,
+        severity: r.item.budgetSeverity ?? null,
+        status: r.item.budgetStatus ?? "",
+      })),
+    { applyMutations: config.applyMutations },
+  );
   // Decision-log emit inputs come off the routed rows: the routing rule
   // already decided each item's destination; the planner formats each as a
   // dry-run record behind the dedicated `decisionLogEmit` flag (default off).
@@ -375,6 +402,7 @@ export async function sweepDecisions(
     approvalPlans,
     unblockPlans,
     respondPlans,
+    budgetAlertPlans,
     decisionLogPlans,
     metrics,
     digest: renderDigest(routed, now, !config.applyMutations),

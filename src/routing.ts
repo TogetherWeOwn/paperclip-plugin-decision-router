@@ -116,6 +116,10 @@ export function routeAttention(item: AttentionItem, ctx: RoutingContext): RouteD
     }
     case "issue_thread_interaction":
     case "approval":
+    case "budget_alert":
+      // Budget alerts are spend-adjacent: validated rows propose for the digest
+      // (`budgetAlert.ts`), but the item itself is never auto-routed to an
+      // agent — the CEO decides on the proposal.
       return { type: "ceo-digest", reason: `${item.kind} — CEO decision via the digest grammar` };
   }
 }

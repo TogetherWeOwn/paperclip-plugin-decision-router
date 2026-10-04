@@ -44,7 +44,7 @@ function assertSlaShape(payload: unknown): asserts payload is SlaPayload {
   expect(snapshot.shadow).toBeTypeOf("boolean");
   expect(Array.isArray(snapshot.byKind)).toBe(true);
   const byKind = snapshot.byKind as ByKindEntry[];
-  expect(byKind).toHaveLength(6);
+  expect(byKind).toHaveLength(7);
   expect(byKind.map((entry) => entry.kind)).toEqual([...ATTENTION_KINDS]);
   for (const entry of byKind) {
     expect(entry.count).toBeTypeOf("number");
