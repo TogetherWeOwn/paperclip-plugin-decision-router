@@ -22,7 +22,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Only supersede PR runs; push and nightly share a group on refs/heads/main.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Native `git diff --name-only` against the merge base; no third-party
@@ -49,14 +50,17 @@ jobs:
           base="${{ github.event.pull_request.base.sha }}"
           head="${{ github.event.pull_request.head.sha }}"
           merge_base="$(git merge-base "$base" "$head")"
-          files="$(git diff --name-only "$merge_base" "$head")"
+          # --no-renames: a rename from src/ to docs/ must list the old path too.
+          files="$(git diff --name-only --no-renames "$merge_base" "$head")"
           echo "changed files:"; echo "$files"
           if [ -z "$files" ]; then
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # Docs-only = every file is markdown or under docs/.
-          if echo "$files" | grep -vqE '(\.md$|^docs/)'; then
+          # Here-string, not a pipe: under pipefail a long path list makes grep
+          # exit early and SIGPIPE the writer, which misreads as docs-only.
+          if grep -vqE '(\.md$|^docs/)' <<<"$files"; then
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
           else
             echo "docs_only=true" >> "$GITHUB_OUTPUT"
