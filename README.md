@@ -54,3 +54,10 @@ no item has a known age. Before the first sweep the endpoint returns
 `{"error": "no sweep yet"}`. Frozen payload contract: `docs/SLA_METRICS.md`,
 pinned example `tests/fixtures/sla-metrics.json`, shape probe
 `tests/sla-metrics-probe.spec.ts`.
+
+Sweep-output freshness (the digest timestamp itself) has its own source-only
+probe: `src/sweepSilence.ts` reads DOWN when the last-sweep `at` age exceeds
+its threshold (default 15 minutes), UP otherwise; it pages nothing and
+changes no alert route. Frozen contract: `docs/SWEEP_SILENCE_PROBE.md`,
+pinned fixtures `tests/fixtures/sweep-silence.json`, probe spec
+`tests/sweep-silence-probe.spec.ts`.
