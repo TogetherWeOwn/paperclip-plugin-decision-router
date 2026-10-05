@@ -1,0 +1,313 @@
+[
+  {
+    "name": "join_request: pending human request proposes only under the flag",
+    "verb": "join_request",
+    "input": {
+      "requestId": "jr-1",
+      "requesterKind": "human",
+      "requesterRef": "new-member",
+      "status": "pending"
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null,
+      "idempotencyKey": "join-request:jr-1"
+    },
+    "enforce": {
+      "decision": "propose",
+      "mode": "propose",
+      "idempotencyKey": "join-request:jr-1",
+      "proposal": {
+        "requestId": "jr-1",
+        "requesterKind": "human",
+        "requesterRef": "new-member",
+        "destination": "ceo-digest",
+        "grammarStub": "DECIDE joins:jr-1 approve|reject",
+        "detail": null
+      }
+    }
+  },
+  {
+    "name": "join_request: pending agent request shares the digest path under the flag",
+    "verb": "join_request",
+    "input": {
+      "requestId": "jr-2",
+      "requesterKind": "agent",
+      "requesterRef": "helper-bot",
+      "status": "pending"
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null,
+      "idempotencyKey": "join-request:jr-2"
+    },
+    "enforce": {
+      "decision": "propose",
+      "mode": "propose",
+      "idempotencyKey": "join-request:jr-2",
+      "proposal": {
+        "requestId": "jr-2",
+        "requesterKind": "agent",
+        "requesterRef": "helper-bot",
+        "destination": "ceo-digest",
+        "grammarStub": "DECIDE joins:jr-2 approve|reject",
+        "detail": null
+      }
+    }
+  },
+  {
+    "name": "join_request: decided history never re-proposes in either mode",
+    "verb": "join_request",
+    "input": {
+      "requestId": "jr-3",
+      "requesterKind": "human",
+      "requesterRef": "new-member",
+      "status": "approved"
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null
+    },
+    "enforce": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null
+    }
+  },
+  {
+    "name": "join_request: unknown requester kind skips in either mode",
+    "verb": "join_request",
+    "input": {
+      "requestId": "jr-4",
+      "requesterKind": "system",
+      "requesterRef": "sys-hook",
+      "status": "pending"
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null
+    },
+    "enforce": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null
+    }
+  },
+  {
+    "name": "join_request: malformed row skips in either mode",
+    "verb": "join_request",
+    "input": {
+      "requestId": "",
+      "requesterKind": "human",
+      "requesterRef": "new-member",
+      "status": "pending"
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null
+    },
+    "enforce": {
+      "decision": "skip",
+      "mode": "propose",
+      "proposal": null
+    }
+  },
+  {
+    "name": "budget_alert: critical triggered alert flips mode but keeps the key",
+    "verb": "budget_alert",
+    "input": {
+      "id": "alert-1",
+      "issueId": "issue-1",
+      "severity": "critical",
+      "status": "triggered"
+    },
+    "advise": {
+      "decision": "propose",
+      "severity": "critical",
+      "mode": "propose",
+      "idempotencyKey": "budget-alert:alert-1"
+    },
+    "enforce": {
+      "decision": "propose",
+      "severity": "critical",
+      "mode": "apply",
+      "idempotencyKey": "budget-alert:alert-1"
+    }
+  },
+  {
+    "name": "budget_alert: warning active alert proposes in both modes",
+    "verb": "budget_alert",
+    "input": {
+      "id": "alert-2",
+      "issueId": "issue-1",
+      "severity": "warning",
+      "status": "active"
+    },
+    "advise": {
+      "decision": "propose",
+      "severity": "warning",
+      "mode": "propose",
+      "idempotencyKey": "budget-alert:alert-2"
+    },
+    "enforce": {
+      "decision": "propose",
+      "severity": "warning",
+      "mode": "apply",
+      "idempotencyKey": "budget-alert:alert-2"
+    }
+  },
+  {
+    "name": "budget_alert: resolved history never re-proposes in either mode",
+    "verb": "budget_alert",
+    "input": {
+      "id": "alert-3",
+      "issueId": "issue-1",
+      "severity": "warning",
+      "status": "resolved"
+    },
+    "advise": {
+      "decision": "skip",
+      "severity": null,
+      "mode": "propose"
+    },
+    "enforce": {
+      "decision": "skip",
+      "severity": null,
+      "mode": "apply"
+    }
+  },
+  {
+    "name": "budget_alert: ungraded severity never proposes in either mode",
+    "verb": "budget_alert",
+    "input": {
+      "id": "alert-4",
+      "issueId": "issue-1",
+      "severity": "urgent",
+      "status": "triggered"
+    },
+    "advise": {
+      "decision": "skip",
+      "severity": null,
+      "mode": "propose"
+    },
+    "enforce": {
+      "decision": "skip",
+      "severity": null,
+      "mode": "apply"
+    }
+  },
+  {
+    "name": "budget_alert: malformed row never proposes in either mode",
+    "verb": "budget_alert",
+    "input": {
+      "id": "",
+      "issueId": "issue-1",
+      "severity": "critical",
+      "status": "triggered"
+    },
+    "advise": {
+      "decision": "skip",
+      "severity": null,
+      "mode": "propose"
+    },
+    "enforce": {
+      "decision": "skip",
+      "severity": null,
+      "mode": "apply"
+    }
+  },
+  {
+    "name": "decision-bundle: full bundle proposes in canonical order only under the flag",
+    "verb": "decision-bundle",
+    "input": {
+      "bundleId": "bundle-1",
+      "targetIssueId": "issue-9",
+      "effects": [
+        { "type": "update_issue_status", "status": "done" },
+        { "type": "assign_issue", "assigneeAgentId": "agent-1" },
+        { "type": "comment_on_issue", "body": "decision: ship it" }
+      ]
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "effects": [],
+      "idempotencyKey": "decision-bundle:bundle-1"
+    },
+    "enforce": {
+      "decision": "propose",
+      "mode": "propose",
+      "idempotencyKey": "decision-bundle:bundle-1",
+      "effects": [
+        { "type": "comment_on_issue", "order": 0 },
+        { "type": "assign_issue", "order": 1 },
+        { "type": "update_issue_status", "order": 2 }
+      ]
+    }
+  },
+  {
+    "name": "decision-bundle: unknown effect type fails closed in either mode",
+    "verb": "decision-bundle",
+    "input": {
+      "bundleId": "bundle-2",
+      "targetIssueId": "issue-9",
+      "effects": [
+        { "type": "delete_issue" },
+        { "type": "comment_on_issue", "body": "hi" }
+      ]
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "effects": []
+    },
+    "enforce": {
+      "decision": "skip",
+      "mode": "propose",
+      "effects": []
+    }
+  },
+  {
+    "name": "decision-bundle: empty bundle proposes nothing in either mode",
+    "verb": "decision-bundle",
+    "input": {
+      "bundleId": "bundle-3",
+      "targetIssueId": "issue-9",
+      "effects": []
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "effects": []
+    },
+    "enforce": {
+      "decision": "skip",
+      "mode": "propose",
+      "effects": []
+    }
+  },
+  {
+    "name": "decision-bundle: malformed bundle id skips in either mode",
+    "verb": "decision-bundle",
+    "input": {
+      "bundleId": "",
+      "targetIssueId": "issue-9",
+      "effects": [{ "type": "comment_on_issue", "body": "hi" }]
+    },
+    "advise": {
+      "decision": "skip",
+      "mode": "propose",
+      "effects": []
+    },
+    "enforce": {
+      "decision": "skip",
+      "mode": "propose",
+      "effects": []
+    }
+  }
+]
