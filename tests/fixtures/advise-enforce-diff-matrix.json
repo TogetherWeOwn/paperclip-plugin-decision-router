@@ -14,6 +14,7 @@
       "proposal": null,
       "idempotencyKey": "join-request:jr-1"
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "propose",
       "mode": "propose",
@@ -26,7 +27,8 @@
         "grammarStub": "DECIDE joins:jr-1 approve|reject",
         "detail": null
       }
-    }
+    },
+    "enforceReasonContains": "digest route"
   },
   {
     "name": "join_request: pending agent request shares the digest path under the flag",
@@ -43,6 +45,7 @@
       "proposal": null,
       "idempotencyKey": "join-request:jr-2"
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "propose",
       "mode": "propose",
@@ -55,7 +58,8 @@
         "grammarStub": "DECIDE joins:jr-2 approve|reject",
         "detail": null
       }
-    }
+    },
+    "enforceReasonContains": "digest route"
   },
   {
     "name": "join_request: decided history never re-proposes in either mode",
@@ -71,11 +75,13 @@
       "mode": "propose",
       "proposal": null
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "skip",
       "mode": "propose",
       "proposal": null
-    }
+    },
+    "enforceReasonContains": "is not attention"
   },
   {
     "name": "join_request: unknown requester kind skips in either mode",
@@ -91,11 +97,13 @@
       "mode": "propose",
       "proposal": null
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "skip",
       "mode": "propose",
       "proposal": null
-    }
+    },
+    "enforceReasonContains": "unrecognized requester kind"
   },
   {
     "name": "join_request: malformed row skips in either mode",
@@ -111,11 +119,13 @@
       "mode": "propose",
       "proposal": null
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "skip",
       "mode": "propose",
       "proposal": null
-    }
+    },
+    "enforceReasonContains": "missing request id"
   },
   {
     "name": "budget_alert: critical triggered alert flips mode but keeps the key",
@@ -132,12 +142,14 @@
       "mode": "propose",
       "idempotencyKey": "budget-alert:alert-1"
     },
+    "adviseReasonContains": "CEO digest",
     "enforce": {
       "decision": "propose",
       "severity": "critical",
       "mode": "apply",
       "idempotencyKey": "budget-alert:alert-1"
-    }
+    },
+    "enforceReasonContains": "CEO digest"
   },
   {
     "name": "budget_alert: warning active alert proposes in both modes",
@@ -154,12 +166,14 @@
       "mode": "propose",
       "idempotencyKey": "budget-alert:alert-2"
     },
+    "adviseReasonContains": "CEO digest",
     "enforce": {
       "decision": "propose",
       "severity": "warning",
       "mode": "apply",
       "idempotencyKey": "budget-alert:alert-2"
-    }
+    },
+    "enforceReasonContains": "CEO digest"
   },
   {
     "name": "budget_alert: resolved history never re-proposes in either mode",
@@ -175,11 +189,13 @@
       "severity": null,
       "mode": "propose"
     },
+    "adviseReasonContains": "is not attention",
     "enforce": {
       "decision": "skip",
       "severity": null,
       "mode": "apply"
-    }
+    },
+    "enforceReasonContains": "is not attention"
   },
   {
     "name": "budget_alert: ungraded severity never proposes in either mode",
@@ -195,11 +211,13 @@
       "severity": null,
       "mode": "propose"
     },
+    "adviseReasonContains": "ungraded",
     "enforce": {
       "decision": "skip",
       "severity": null,
       "mode": "apply"
-    }
+    },
+    "enforceReasonContains": "ungraded"
   },
   {
     "name": "budget_alert: malformed row never proposes in either mode",
@@ -215,11 +233,13 @@
       "severity": null,
       "mode": "propose"
     },
+    "adviseReasonContains": "missing alert id",
     "enforce": {
       "decision": "skip",
       "severity": null,
       "mode": "apply"
-    }
+    },
+    "enforceReasonContains": "missing alert id"
   },
   {
     "name": "decision-bundle: full bundle proposes in canonical order only under the flag",
@@ -239,6 +259,7 @@
       "effects": [],
       "idempotencyKey": "decision-bundle:bundle-1"
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "propose",
       "mode": "propose",
@@ -248,7 +269,8 @@
         { "type": "assign_issue", "order": 1 },
         { "type": "update_issue_status", "order": 2 }
       ]
-    }
+    },
+    "enforceReasonContains": "canonical order"
   },
   {
     "name": "decision-bundle: unknown effect type fails closed in either mode",
@@ -257,7 +279,7 @@
       "bundleId": "bundle-2",
       "targetIssueId": "issue-9",
       "effects": [
-        { "type": "delete_issue" },
+        { "type": "delete_issue", "status": "done" },
         { "type": "comment_on_issue", "body": "hi" }
       ]
     },
@@ -266,11 +288,13 @@
       "mode": "propose",
       "effects": []
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "skip",
       "mode": "propose",
       "effects": []
-    }
+    },
+    "enforceReasonContains": "unknown effect type"
   },
   {
     "name": "decision-bundle: empty bundle proposes nothing in either mode",
@@ -285,11 +309,13 @@
       "mode": "propose",
       "effects": []
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "skip",
       "mode": "propose",
       "effects": []
-    }
+    },
+    "enforceReasonContains": "carries no effects"
   },
   {
     "name": "decision-bundle: malformed bundle id skips in either mode",
@@ -304,10 +330,12 @@
       "mode": "propose",
       "effects": []
     },
+    "adviseReasonContains": "flag off",
     "enforce": {
       "decision": "skip",
       "mode": "propose",
       "effects": []
-    }
+    },
+    "enforceReasonContains": "missing bundle id"
   }
 ]

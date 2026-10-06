@@ -22,6 +22,8 @@ interface DiffFixture {
   input: Record<string, unknown>;
   advise: Record<string, unknown>;
   enforce: Record<string, unknown>;
+  adviseReasonContains?: string;
+  enforceReasonContains?: string;
 }
 
 const fixtures = JSON.parse(
@@ -32,6 +34,7 @@ interface Planned {
   decision: string;
   mode: string;
   idempotencyKey: string;
+  reason: string;
 }
 
 function planBoth(fixture: DiffFixture): { advisePlan: Planned; enforcePlan: Planned } {
@@ -64,11 +67,17 @@ describe("advise-vs-enforce diff matrix", () => {
     it(`${fixture.name} [advise]`, () => {
       const { advisePlan } = planBoth(fixture);
       expect(advisePlan).toMatchObject(fixture.advise);
+      if (fixture.adviseReasonContains !== undefined) {
+        expect(advisePlan.reason).toContain(fixture.adviseReasonContains);
+      }
     });
 
     it(`${fixture.name} [enforce]`, () => {
       const { enforcePlan } = planBoth(fixture);
       expect(enforcePlan).toMatchObject(fixture.enforce);
+      if (fixture.enforceReasonContains !== undefined) {
+        expect(enforcePlan.reason).toContain(fixture.enforceReasonContains);
+      }
     });
 
     it(`${fixture.name} [diff invariants]`, () => {
@@ -93,6 +102,9 @@ describe("advise-vs-enforce diff matrix", () => {
     for (const fixture of fixtures) {
       expect(Object.keys(fixture.advise).length).toBeGreaterThan(0);
       expect(Object.keys(fixture.enforce).length).toBeGreaterThan(0);
+      // Every row pins its skip/propose path: a changed reason fails the row.
+      expect(fixture.adviseReasonContains?.length).toBeGreaterThan(0);
+      expect(fixture.enforceReasonContains?.length).toBeGreaterThan(0);
     }
   });
 });
