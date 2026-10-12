@@ -6,7 +6,9 @@ name: PR lint
 # PR template sections (Thinking Path, What Changed, Verification, Risks, Model Used, and
 # Linked Issues or Issue Description for feat/fix/perf/refactor/security). Land it in "warn",
 # clear the open PRs, then flip to "error".
-# Private repos: set REQUIRE_CARD_REF to "true" so every PR links its tracking card.
+# Private repos: set REQUIRE_CARD_REF to "true" so every PR links its tracking card, and
+# STRICT_INTERNAL_LEVEL to "warning": the card ref is a tracker id that the strict gate
+# would otherwise reject, so the two settings must be set together.
 # Forward control for public repos: the strict subset (tracker ids scoped to this
 # file's prefix pattern, instance UI links, and the internal host) always fails the PR
 # title/body check. STRICT_INTERNAL_LEVEL fail-closed: any value other than an explicit
