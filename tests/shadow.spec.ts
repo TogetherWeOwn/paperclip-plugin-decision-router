@@ -6,7 +6,7 @@
  *   ./interaction_triage.sh classify --json < /tmp/pending.json > /tmp/host.json
  *   SHADOW_INPUT=/tmp/pending.json SHADOW_ROWS=/tmp/host.json npm test -- tests/shadow.spec.ts
  *
- * Two files, joined by `identifier`:
+ * Two files, joined positionally in input order:
  * - `SHADOW_INPUT` (default `/tmp/pending.json`): the classifier input array
  *   (the `pending.sql` output). Each row carries the classifier inputs
  *   (`kind`, `effectiveResolverPolicy`, `createdByAgentId`, ...), e.g.:
@@ -29,10 +29,14 @@
  *   {"identifier":"TOG-1","verdict":"AGENT_RESOLVABLE","why":"...","resolvers":["agent-a"],"warnings":[],"continuation":"WAKES","continuationWhy":"..."}
  *
  * The host output never repeats the classifier inputs, so the loader joins
- * the two files by `identifier` and fails loudly on a missing or duplicate
- * identifier or a row-count mismatch. A single-file `host.json` array in the
- * old combined input+verdict shape is NOT accepted: it is a shape the host
- * never emits.
+ * the two files positionally: `classify --json` emits one object per input
+ * row in input order, so index i of `SHADOW_INPUT` corresponds to line i of
+ * `SHADOW_ROWS`. The loader fails loudly on a row-count mismatch or on an
+ * identifier divergence at any index. Duplicate identifiers are allowed: the
+ * server permits several pending cards on one issue (one row per pending
+ * interaction), and such boards still join index-to-index. A single-file
+ * `host.json` array in the old combined input+verdict shape is NOT accepted:
+ * it is a shape the host never emits.
  *
  * Accepted aliases for the joined expectation: `verdict` for `hostVerdict`,
  * `resolvers`/`host_resolvers` for `hostResolvers`, `continuation` for
@@ -199,10 +203,13 @@ export function parseInputArray(text: string, path: string): TriageRow[] {
 }
 
 /**
- * Join classifier inputs with host verdicts by `identifier`. Fails loudly
- * on a missing or duplicate identifier on either side, or on a row-count
- * mismatch (an input row with no host verdict, or a host verdict with no
- * input row).
+ * Join classifier inputs with host verdicts positionally (input order).
+ * `classify --json` emits one object per input row in input order, so index
+ * i of the inputs corresponds to line i of the host output. Fails loudly on
+ * a row-count mismatch or on an identifier divergence at any index.
+ * Duplicate identifiers are allowed: one issue may have several pending
+ * cards (one row per pending interaction), and those boards join
+ * index-to-index.
  */
 export function joinRows(
   inputs: TriageRow[],
@@ -211,42 +218,41 @@ export function joinRows(
 ): HostShadowRow[] {
   const inLabel = opts?.inputPath ?? inputPath();
   const rowsLabel = opts?.rowsPath ?? rowsPath();
-  const byInput = new Map<string, TriageRow>();
   for (const row of inputs) {
     const id = (row as { identifier?: unknown }).identifier;
     if (typeof id !== "string" || id.length === 0) {
       throw new Error(`shadow inputs at ${inLabel} contain a row with no identifier`);
     }
-    if (byInput.has(id)) {
-      throw new Error(`shadow inputs at ${inLabel} contain duplicate identifier ${id}`);
-    }
-    byInput.set(id, row);
   }
-  const byVerdict = new Map<string, HostVerdictRow>();
   for (const row of verdicts) {
     const id = row.identifier;
     if (typeof id !== "string" || id.length === 0) {
       throw new Error(`shadow host rows at ${rowsLabel} contain a row with no identifier`);
     }
-    if (byVerdict.has(id)) {
-      throw new Error(`shadow host rows at ${rowsLabel} contain duplicate identifier ${id}`);
+  }
+  if (inputs.length !== verdicts.length) {
+    throw new Error(`shadow row-count mismatch (inputs=${inputs.length} host=${verdicts.length})`);
+  }
+  for (let i = 0; i < inputs.length; i++) {
+    const inRow = inputs[i];
+    const hostRow = verdicts[i];
+    if (inRow === undefined || hostRow === undefined) {
+      throw new Error(`shadow row-count mismatch (inputs=${inputs.length} host=${verdicts.length})`);
     }
-    byVerdict.set(id, row);
+    const inId = (inRow as { identifier?: unknown }).identifier as string;
+    const hostId = hostRow.identifier;
+    if (inId !== hostId) {
+      throw new Error(
+        `shadow identifier mismatch at row ${i + 1}: input ${inId} != host ${hostId} ` +
+          `(inputs and host rows must stay in the same order)`,
+      );
+    }
   }
-  const missing = [...byInput.keys()].filter((id) => !byVerdict.has(id));
-  const extra = [...byVerdict.keys()].filter((id) => !byInput.has(id));
-  if (missing.length > 0 || extra.length > 0 || byInput.size !== byVerdict.size) {
-    const detail = [
-      `inputs=${byInput.size} host=${byVerdict.size}`,
-      missing.length > 0 ? `no host verdict for: ${missing.slice(0, 5).join(", ")}` : "",
-      extra.length > 0 ? `no classifier input for: ${extra.slice(0, 5).join(", ")}` : "",
-    ]
-      .filter(Boolean)
-      .join("; ");
-    throw new Error(`shadow row-count mismatch (${detail})`);
-  }
-  return [...byInput.entries()].map(([id, row]) => {
-    const verdict = byVerdict.get(id) as HostVerdictRow;
+  return inputs.map((row, i) => {
+    const verdict = verdicts[i];
+    if (verdict === undefined) {
+      throw new Error(`shadow row-count mismatch (inputs=${inputs.length} host=${verdicts.length})`);
+    }
     return {
       ...row,
       hostVerdict: verdict.verdict ?? verdict.hostVerdict,
@@ -333,7 +339,7 @@ describe("shadow parity harness", () => {
     expect(mismatch).toContain("INERT");
   });
 
-  it("joins classifier inputs with NDJSON host verdicts by identifier", () => {
+  it("joins classifier inputs with NDJSON host verdicts positionally", () => {
     const inputs: TriageRow[] = [
       {
         identifier: "TOG-join-1",
@@ -369,7 +375,38 @@ describe("shadow parity harness", () => {
     expect(parseHostNdjson(hostNdjson, "<fixture>")).toHaveLength(2);
   });
 
-  it("fails the join on duplicate, missing, or mismatched identifiers", () => {
+  it("joins boards where one issue has several pending cards (duplicate identifiers)", () => {
+    const base = {
+      kind: "request_confirmation",
+      effectiveResolverPolicy: "board_or_agents",
+      createdByAgentId: "agent-creator",
+      continuationPolicy: "wake_assignee",
+      issueStatus: "todo",
+    } as const;
+    const inputs: TriageRow[] = [
+      { ...base, identifier: "TOG-dup", assigneeAgentId: "agent-r1" },
+      { ...base, identifier: "TOG-dup", assigneeAgentId: "agent-r2" },
+    ];
+    const hostNdjson = [
+      '{"identifier":"TOG-dup","verdict":"AGENT_RESOLVABLE","why":"r1 can answer","resolvers":["agent-r1"],"warnings":[],"continuation":"WAKES","continuationWhy":"r1"}',
+      '{"identifier":"TOG-dup","verdict":"AGENT_RESOLVABLE","why":"r2 can answer","resolvers":["agent-r2"],"warnings":[],"continuation":"WAKES","continuationWhy":"r2"}',
+    ].join("\n");
+    const verdicts = parseHostNdjson(hostNdjson, "<fixture>");
+    const joined = joinRows(inputs, verdicts, { inputPath: "<fixture-in>", rowsPath: "<fixture-host>" });
+    expect(joined).toHaveLength(2);
+    // Positional: first input pairs with first host line, second with second.
+    const first = joined[0];
+    const second = joined[1];
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    if (first === undefined || second === undefined) throw new Error("joined rows missing");
+    expect(first.hostResolvers).toEqual(["agent-r1"]);
+    expect(second.hostResolvers).toEqual(["agent-r2"]);
+    expect(compareRow(first)).toBeNull();
+    expect(compareRow(second)).toBeNull();
+  });
+
+  it("fails the join on count mismatch or identifier divergence", () => {
     const input: TriageRow = {
       identifier: "TOG-join-x",
       kind: "request_confirmation",
@@ -380,13 +417,18 @@ describe("shadow parity harness", () => {
       issueStatus: "todo",
     };
     const verdict: HostVerdictRow = { identifier: "TOG-join-x", verdict: "AGENT_RESOLVABLE" };
-    expect(() => joinRows([input, input], [verdict])).toThrow(/duplicate identifier/);
     expect(() => joinRows([input], [verdict, { identifier: "TOG-other", verdict: "INERT" }])).toThrow(
       /row-count mismatch/,
     );
     expect(() => joinRows([input], [{ identifier: "TOG-other", verdict: "INERT" }])).toThrow(
-      /row-count mismatch/,
+      /identifier mismatch/,
     );
+    expect(() =>
+      joinRows(
+        [input, { ...input, identifier: "TOG-join-y" }],
+        [verdict, { identifier: "TOG-other", verdict: "INERT" }],
+      ),
+    ).toThrow(/identifier mismatch/);
   });
 
   it("throws when SHADOW_ROWS is set explicitly and the file is missing", () => {

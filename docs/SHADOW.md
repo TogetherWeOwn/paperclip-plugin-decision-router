@@ -16,12 +16,14 @@ Comparison command (run from a checkout with live-board rows):
 # 1. classifier inputs (JSON array) + host verdicts (NDJSON, one object per row)
 psql -At -f pending.sql > /tmp/pending.json
 ./interaction_triage.sh classify --json < /tmp/pending.json > /tmp/host.json
-# 2. plugin verdicts (vitest harness joins both files by identifier)
+# 2. plugin verdicts (vitest harness joins both files positionally in input order)
 SHADOW_INPUT=/tmp/pending.json SHADOW_ROWS=/tmp/host.json npm test -- tests/shadow.spec.ts
 ```
 
-The harness joins the two files by `identifier` and fails on a missing or
-duplicate identifier or a row-count mismatch. An explicitly set
+The harness joins the two files positionally (`classify --json` emits one
+object per input row in input order, so index i pairs with line i) and fails
+on a row-count mismatch or an identifier divergence at any index. Duplicate
+identifiers are allowed: one issue may have several pending cards. An explicitly set
 `SHADOW_INPUT`/`SHADOW_ROWS` pointing at a missing file throws instead of
 passing silently; with neither variable set and no default files, the live
 test reports skipped.
