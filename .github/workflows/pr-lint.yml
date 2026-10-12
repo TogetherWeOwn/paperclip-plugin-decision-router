@@ -7,6 +7,11 @@ name: PR lint
 # Linked Issues or Issue Description for feat/fix/perf/refactor/security). Land it in "warn",
 # clear the open PRs, then flip to "error".
 # Private repos: set REQUIRE_CARD_REF to "true" so every PR links its tracking card.
+# Forward control for public repos: the strict subset (tracker ids scoped to this
+# file's prefix pattern, instance UI links, and the internal host) always fails the PR
+# title/body check. STRICT_INTERNAL_LEVEL fail-closed: any value other than an explicit
+# "warning" (or "warn") downgrade fails. Advisory INTERNAL_ID_LEVEL behavior is unchanged
+# and is skipped for a field the strict subset already flagged.
 
 on:
   pull_request:
@@ -24,6 +29,7 @@ concurrency:
 env:
   REQUIRE_CARD_REF: "false"
   INTERNAL_ID_LEVEL: "warning" # or "error" to fail a PR that carries an internal ticket id
+  STRICT_INTERNAL_LEVEL: "error" # fail-closed strict public-text gate; "warning" downgrades it
   PR_STANDARDS_MODE: "warn"
 
 jobs:
@@ -46,6 +52,13 @@ jobs:
           TYPES = "feat|fix|perf|refactor|test|docs|build|ci|chore|revert|style|security"
           HEADER = re.compile(rf"^({TYPES})(\([A-Za-z0-9._/,-]+\))?!?: \S.*$")
           INTERNAL_ID = re.compile(r"\b(TOG|PAP)-\d+\b")
+          # Strict public-text subset: tracker ids (this file's prefix pattern above),
+          # instance UI links and the internal host. These always fail a public
+          # title/body check unless the strict level is explicitly downgraded to a
+          # warning (fail-closed).
+          UI_LINK = re.compile(r"/[A-Z]{2,6}/(issues|agents|projects|approvals|runs)/")
+          HOST_INTERNAL = re.compile(r"\binfextion\.net\b", re.IGNORECASE)
+          STRICT_FIXED = [(UI_LINK, "an instance UI link"), (HOST_INTERNAL, "the internal host")]
           HELP = ("Expected a Conventional Commits header, e.g. 'fix(auth): refuse expired sudo "
                   "sessions'. Allowed types: " + TYPES.replace("|", ", ") + ".")
 
@@ -101,6 +114,25 @@ jobs:
                   return level == "error"
               return False
 
+          def strict_internal_hits(text):
+              """Fail-closed strict subset for public title/body. Labels only, never values."""
+              hits = []
+              if INTERNAL_ID.search(text or ""):
+                  hits.append("a tracker id")
+              for pat, label in STRICT_FIXED:
+                  if pat.search(text or ""):
+                      hits.append(label)
+              return hits
+
+          def report_strict(hits, where):
+              raw = (os.environ.get("STRICT_INTERNAL_LEVEL") or "").strip().lower()
+              level = "warning" if raw in ("warning", "warn") else "error"
+              print(f"::{level} title=Strict internal ref in {where}::The PR {where} holds " +
+                    f"{', '.join(hits)}. Public PR text carries no tracker ids, instance " +
+                    "links or internal hosts: say it in plain words and link only public " +
+                    "GitHub issues.")
+              return level == "error"
+
           mode = os.environ.get("PR_STANDARDS_MODE", "warn")
           strict = mode == "error"
           failed = False
@@ -137,10 +169,14 @@ jobs:
                             f"is missing or has fewer than {minimum} real item(s). Follow the PR template.")
               if os.environ.get("REQUIRE_CARD_REF") == "true" and not INTERNAL_ID.search(body):
                   failed = True
-                  print("::error title=Card reference::Add 'Refs: TOG-1234' to the PR body.")
-              failed = internal_id_notes(title, "the title") or failed
-              if internal_id_notes(body, "the body"):
-                  failed = True
+                  print("::error title=Card reference::Add 'Refs: <card-id>' to the PR body.")
+              for where, text in (("the title", title), ("the body", body)):
+                  hits = strict_internal_hits(text)
+                  if hits:
+                      if report_strict(hits, where):
+                          failed = True
+                  elif internal_id_notes(text, where):
+                      failed = True
           else:
               for c in json.loads(os.environ.get("COMMITS") or "[]") or []:
                   subject = (c.get("message") or "").splitlines()[0] if c.get("message") else ""
