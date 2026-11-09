@@ -80,10 +80,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24.21.0
           cache: npm
+      - name: Select native policy-capable npm
+        run: npm install --global npm@11.19.0 --ignore-scripts --min-release-age=3
+      - name: Verify native age and script refusal
+        run: node --test tests/npm-policy.test.mjs
       - run: npm ci
       - run: npm run verify
+      - name: Built worker mock-host contract
+        run: node --test tests/worker-rpc.test.mjs
 
   # The single required aggregator. Skipped jobs count as success here, so
   # docs-only gating can never block a merge; a failed or cancelled job
