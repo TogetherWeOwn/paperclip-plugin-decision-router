@@ -19,7 +19,7 @@ test("Actions uses the selected native-policy npm and project settings", async (
   assert.equal((await exec("npm", ["config", "get", "ignore-scripts"])).stdout.trim(), "true");
 });
 
-test("npm enforces three-day age and refuses root/dependency lifecycle scripts", { timeout: 90_000 }, async () => {
+test("npm enforces three-day age and refuses root/dependency lifecycle scripts", { timeout: 150_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "npm-policy-"));
   const server = createServer();
   try {
@@ -42,6 +42,9 @@ test("npm enforces three-day age and refuses root/dependency lifecycle scripts",
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     const registry = `http://127.0.0.1:${server.address().port}`;
+    const oldPublication = new Date(Date.now() - 10 * 86400_000).toISOString();
+    const recentPublication = new Date(Date.now() - 3600_000).toISOString();
+    let exactPublication = recentPublication;
     server.on("request", (req, res) => {
       const artifact = artifacts.get(req.url?.slice(1).replace(/\.tgz$/, ""));
       if (artifact) {
@@ -53,8 +56,7 @@ test("npm enforces three-day age and refuses root/dependency lifecycle scripts",
         }]));
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ name: "policy-probe", "dist-tags": { latest: "2.0.0" }, versions,
-          time: { "1.0.0": new Date(Date.now() - 10 * 86400_000).toISOString(),
-            "2.0.0": new Date(Date.now() - 3600_000).toISOString() } }));
+          time: { "1.0.0": oldPublication, "2.0.0": exactPublication } }));
       } else {
         res.writeHead(404).end();
       }
@@ -74,10 +76,25 @@ test("npm enforces three-day age and refuses root/dependency lifecycle scripts",
     const lock = JSON.parse(await readFile(join(project, "package-lock.json"), "utf8"));
     assert.equal(lock.packages["node_modules/policy-probe"].version, "1.0.0");
     await assert.rejects(access(marker), { code: "ENOENT" });
-    await assert.rejects(exec("npm", [...args, "policy-probe@2.0.0"], options), { code: 1 });
+    const exactArgs = [...args, "policy-probe@2.0.0"];
+    await assert.rejects(exec("npm", exactArgs, { ...options,
+      env: { ...options.env, npm_config_cache: join(root, "recent-cache") },
+    }), { code: 1 });
     const unchanged = JSON.parse(await readFile(join(project, "package-lock.json"), "utf8"));
     assert.equal(unchanged.packages["node_modules/policy-probe"].version, "1.0.0");
     await assert.rejects(access(marker), { code: "ENOENT" });
+    // The same exact package must install when only its publication age changes.
+    // Cold caches force both exact attempts to use the current registry metadata.
+    exactPublication = oldPublication;
+    await exec("npm", exactArgs, { ...options,
+      env: { ...options.env, npm_config_cache: join(root, "eligible-cache") },
+    });
+    const eligible = JSON.parse(await readFile(join(project, "package-lock.json"), "utf8"));
+    assert.equal(eligible.packages["node_modules/policy-probe"].version, "2.0.0");
+    const exactInstalled = JSON.parse(await readFile(join(project, "node_modules/policy-probe/package.json"), "utf8"));
+    assert.equal(exactInstalled.version, "2.0.0");
+    await assert.rejects(access(marker), { code: "ENOENT" });
+    exactPublication = recentPublication;
     // Native age filtering is resolution-only, not a retrospective lock audit.
     // A handcrafted, synchronized synthetic lock demonstrates that limitation
     // without ever disabling the project's age or script settings.
