@@ -25,23 +25,27 @@ test("npm enforces three-day age and refuses root/dependency lifecycle scripts",
     await mkdir(project);
     const marker = join(root, "hook-ran");
     const hook = `node -e 'require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")'`;
-    await writeFile(join(source, "package/package.json"), JSON.stringify({
-      name: "policy-probe", version: "1.0.0", scripts: { postinstall: hook },
-    }));
-    const archive = join(root, "probe.tgz");
-    await exec("tar", ["-czf", archive, "-C", source, "package"]);
-    const tarball = await readFile(archive);
-    const integrity = `sha512-${createHash("sha512").update(tarball).digest("base64")}`;
+    const artifacts = new Map();
+    for (const version of ["1.0.0", "2.0.0"]) {
+      await writeFile(join(source, "package/package.json"), JSON.stringify({
+        name: "policy-probe", version, scripts: { postinstall: hook },
+      }));
+      const archive = join(root, `${version}.tgz`);
+      await exec("tar", ["-czf", archive, "-C", source, "package"]);
+      const tarball = await readFile(archive);
+      artifacts.set(version, { tarball, integrity: `sha512-${createHash("sha512").update(tarball).digest("base64")}` });
+    }
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
     const registry = `http://127.0.0.1:${server.address().port}`;
     server.on("request", (req, res) => {
-      if (req.url === "/probe.tgz") {
-        res.end(tarball);
+      const artifact = artifacts.get(req.url?.slice(1).replace(/\.tgz$/, ""));
+      if (artifact) {
+        res.end(artifact.tarball);
       } else if (req.url === "/policy-probe") {
-        const versions = Object.fromEntries(["1.0.0", "2.0.0"].map((version) => [version, {
+        const versions = Object.fromEntries([...artifacts].map(([version, entry]) => [version, {
           name: "policy-probe", version, scripts: { postinstall: hook },
-          dist: { tarball: `${registry}/probe.tgz`, integrity },
+          dist: { tarball: `${registry}/${version}.tgz`, integrity: entry.integrity },
         }]));
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ name: "policy-probe", "dist-tags": { latest: "2.0.0" }, versions,
@@ -71,7 +75,28 @@ test("npm enforces three-day age and refuses root/dependency lifecycle scripts",
       return true;
     });
     await assert.rejects(access(marker), { code: "ENOENT" });
-    console.log("npm 11.19.0: old version selected; too-new exact version rejected; lifecycle markers absent");
+    // Native age filtering is resolution-only, not a retrospective lock audit.
+    // A handcrafted, synchronized synthetic lock demonstrates that limitation
+    // without ever disabling the project's age or script settings.
+    const locked = join(root, "locked");
+    await mkdir(locked);
+    await copyFile(new URL("../.npmrc", import.meta.url), join(locked, ".npmrc"));
+    const consumer = { name: "locked-consumer", version: "1.0.0", private: true,
+      dependencies: { "policy-probe": "2.0.0" }, scripts: { preinstall: hook } };
+    await writeFile(join(locked, "package.json"), JSON.stringify(consumer));
+    await writeFile(join(locked, "package-lock.json"), JSON.stringify({
+      name: consumer.name, version: consumer.version, lockfileVersion: 3, requires: true,
+      packages: { "": consumer, "node_modules/policy-probe": {
+        version: "2.0.0", resolved: `${registry}/2.0.0.tgz`, integrity: artifacts.get("2.0.0").integrity,
+        hasInstallScript: true,
+      } },
+    }));
+    await exec("npm", ["ci", "--registry", registry, "--no-audit", "--no-fund"], { ...options, cwd: locked });
+    const installed = JSON.parse(await readFile(join(locked, "node_modules/policy-probe/package.json"), "utf8"));
+    assert.equal(installed.version, "2.0.0");
+    await assert.rejects(access(marker), { code: "ENOENT" });
+    console.log("npm 11.19.0: old resolution selected; too-new exact resolution rejected; root/dependency hooks refused");
+    console.log("Native limitation confirmed: npm ci reuses a too-new locked version; lock publication provenance needs separate review");
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

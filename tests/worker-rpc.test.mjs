@@ -4,17 +4,33 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import manifest from "../dist/manifest.js";
 
-test("built worker speaks baseline JSON-RPC, negotiates methods and shuts down cleanly", { timeout: 20_000 }, async () => {
-  const worker = spawn(process.execPath, [new URL("../dist/worker.js", import.meta.url).pathname], {
+test("built worker speaks baseline JSON-RPC, negotiates methods and shuts down cleanly", { timeout: 20_000 }, async (t) => {
+  const worker = spawn(process.execPath, [fileURLToPath(new URL("../dist/worker.js", import.meta.url))], {
     stdio: ["pipe", "pipe", "pipe"], env: { PATH: process.env.PATH },
   });
-  const exit = once(worker, "exit");
+  const closed = once(worker, "close");
+  // Observe spawn errors immediately, even before the close wait below.
+  closed.catch(() => {});
+  const kill = () => worker.kill("SIGKILL");
+  t.signal.addEventListener("abort", kill, { once: true });
+  async function closeWithin(ms) {
+    let timer;
+    try {
+      return await Promise.race([closed, new Promise((_, reject) => {
+        timer = setTimeout(() => { kill(); reject(new Error("Worker did not close within deadline")); }, ms);
+      })]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   const lines = createInterface({ input: worker.stdout });
   const pending = new Map();
   const calls = [];
   const logs = [];
+  const protocolErrors = [];
   const state = new Map();
   let sequence = 0;
   let stderr = "";
@@ -60,8 +76,12 @@ test("built worker speaks baseline JSON-RPC, negotiates methods and shuts down c
         clearTimeout(entry.timer);
         pending.delete(message.id);
         entry.resolve(message);
+      } else {
+        throw new Error("Unexpected worker notification");
       }
     } catch (error) {
+      // Keep failures even when a preceding response emptied the pending map.
+      protocolErrors.push(error.message);
       for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(error); }
       pending.clear();
     }
@@ -91,13 +111,19 @@ test("built worker speaks baseline JSON-RPC, negotiates methods and shuts down c
     assert.equal(typeof missingJob.error.code, "number");
     assert.match(missingJob.error.message, /No handler registered/);
     assert.equal((await request("shutdown")).error, undefined);
-    assert.deepEqual(await exit, [0, null]);
+    // Close, not just exit: consume every stdout line before asserting framing.
+    assert.deepEqual(await closeWithin(2000), [0, null]);
+    assert.deepEqual(protocolErrors, []);
     assert.ok(calls.every((method) => ["events.subscribe", "companies.list", "config.get", "issues.list",
       "approvals.list", "state.get", "state.set", "metrics.write"].includes(method)));
   } finally {
     for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(new Error("test cleanup")); }
     lines.close();
-    if (worker.exitCode === null) worker.kill("SIGKILL");
-    await exit;
+    if (worker.exitCode === null) kill();
+    try {
+      await closeWithin(2000);
+    } finally {
+      t.signal.removeEventListener("abort", kill);
+    }
   }
 });
