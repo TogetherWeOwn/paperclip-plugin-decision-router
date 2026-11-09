@@ -12,13 +12,17 @@ import { test } from "node:test";
 
 const exec = promisify(execFile);
 
+// Toolchain/config prerequisites are separate from the behavioral policy verdicts.
+test("Actions uses the selected native-policy npm and project settings", async () => {
+  assert.equal((await exec("npm", ["--version"])).stdout.trim(), "11.19.0");
+  assert.equal((await exec("npm", ["config", "get", "min-release-age"])).stdout.trim(), "3");
+  assert.equal((await exec("npm", ["config", "get", "ignore-scripts"])).stdout.trim(), "true");
+});
+
 test("npm enforces three-day age and refuses root/dependency lifecycle scripts", { timeout: 90_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "npm-policy-"));
   const server = createServer();
   try {
-    assert.equal((await exec("npm", ["--version"])).stdout.trim(), "11.19.0");
-    assert.equal((await exec("npm", ["config", "get", "min-release-age"])).stdout.trim(), "3");
-    assert.equal((await exec("npm", ["config", "get", "ignore-scripts"])).stdout.trim(), "true");
     const source = join(root, "source");
     const project = join(root, "project");
     await mkdir(join(source, "package"), { recursive: true });
@@ -70,10 +74,9 @@ test("npm enforces three-day age and refuses root/dependency lifecycle scripts",
     const lock = JSON.parse(await readFile(join(project, "package-lock.json"), "utf8"));
     assert.equal(lock.packages["node_modules/policy-probe"].version, "1.0.0");
     await assert.rejects(access(marker), { code: "ENOENT" });
-    await assert.rejects(exec("npm", [...args, "policy-probe@2.0.0"], options), (error) => {
-      assert.match(error.stderr, /ETARGET/);
-      return true;
-    });
+    await assert.rejects(exec("npm", [...args, "policy-probe@2.0.0"], options), { code: 1 });
+    const unchanged = JSON.parse(await readFile(join(project, "package-lock.json"), "utf8"));
+    assert.equal(unchanged.packages["node_modules/policy-probe"].version, "1.0.0");
     await assert.rejects(access(marker), { code: "ENOENT" });
     // Native age filtering is resolution-only, not a retrospective lock audit.
     // A handcrafted, synchronized synthetic lock demonstrates that limitation

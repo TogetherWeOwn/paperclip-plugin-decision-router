@@ -34,6 +34,7 @@ test("built worker speaks baseline JSON-RPC, negotiates methods and shuts down c
   const state = new Map();
   let sequence = 0;
   let stderr = "";
+  worker.stderr.setEncoding("utf8");
   worker.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-8000); });
   const send = (message) => worker.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
   function request(method, params = {}) {

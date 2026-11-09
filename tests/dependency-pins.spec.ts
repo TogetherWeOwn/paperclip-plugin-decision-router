@@ -13,7 +13,7 @@ const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const selected = ["@paperclipai/plugin-sdk", "@paperclipai/shared", "zod"];
 
-function checkPins(packages: Record<string, LockEntry>) {
+function checkPins(packages: Record<string, LockEntry>, expectedHeld = held) {
   for (const name of selected) {
     const version = name === "zod" ? "4.6.7" : "2026.831.0";
     expect(pkg.dependencies[name]).toBe(version);
@@ -36,7 +36,7 @@ function checkPins(packages: Record<string, LockEntry>) {
       ["version", "integrity", "resolved"].filter((key) => key in entry)
         .map((key) => [key, entry[key as keyof LockEntry]]),
     )]));
-  expect(actualHeld).toEqual(held);
+  expect(actualHeld).toEqual(expectedHeld);
 }
 
 describe("dependency remediation pins", () => {
@@ -47,8 +47,14 @@ describe("dependency remediation pins", () => {
 
   it("rejects a vulnerable nested Zod even with a patched root", () => {
     const packages = structuredClone(lock.packages);
-    packages["node_modules/@paperclipai/shared/node_modules/zod"] = { version: "3.25.76" };
-    expect(() => checkPins(packages)).toThrow();
+    const path = "node_modules/@paperclipai/shared/node_modules/zod";
+    packages[path] = { version: "4.6.6" };
+    expect(() => checkPins(packages, { ...held, [path]: packages[path] })).not.toThrow();
+    for (const version of ["3.25.76", "4.6.5", "4.6.6-beta.1"]) {
+      packages[path] = { version };
+      // Match the held entry so only the patched-version guard can reject it.
+      expect(() => checkPins(packages, { ...held, [path]: packages[path] })).toThrow();
+    }
   });
 
   it("rejects held optional-platform drift and integrity replacement", () => {
