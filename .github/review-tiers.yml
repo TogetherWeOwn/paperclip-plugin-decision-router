@@ -1,0 +1,12 @@
+# Path tiers are a starting point, not a substitute for content review.
+# The highest tier wins across changed paths (including both sides of renames).
+# Content triggers such as permissions, input parsing, dependencies, CI, or
+# weakened tests escalate to sensitive even in an allowlisted prose file.
+# New and unmatched paths, including this map, default to sensitive.
+version: 1
+default_tier: sensitive
+tiers:
+  low:
+    - LICENSE
+  ordinary: []
+  sensitive: []
