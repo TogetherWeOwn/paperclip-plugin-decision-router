@@ -8,11 +8,5 @@ default_tier: sensitive
 tiers:
   low:
     - LICENSE
-    - README.md
-    - docs/GAPS.md
-    - docs/GRAMMAR.md
-    - docs/SHADOW.md
-    - docs/SLA_METRICS.md
-    - docs/SWEEP_SILENCE_PROBE.md
   ordinary: []
   sensitive: []
